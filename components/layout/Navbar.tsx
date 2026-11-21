@@ -27,6 +27,9 @@ export function Navbar({ user }: NavbarProps) {
 
   // Generate dynamic breadcrumbs matching reference ("Maham > Schedule")
   const getBreadcrumbs = () => {
+    if (pathname.startsWith("/admin")) {
+      return { parent: "Executive Hub", title: "Super Admin Command Center", icon: ShieldCheck };
+    }
     if (pathname.startsWith("/hrms/directory/new")) {
       return { parent: "HRMS", title: "New Employee", icon: Users };
     }

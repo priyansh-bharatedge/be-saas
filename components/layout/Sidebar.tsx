@@ -28,6 +28,9 @@ import {
   Building2,
   Layers,
   ArrowLeftRight,
+  TrendingUp,
+  Filter,
+  Activity,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { AuthUser } from "@/lib/auth/session";
@@ -83,6 +86,7 @@ export function Sidebar({ user }: SidebarProps) {
   };
 
   // Determine active product domain
+  const isAdmin = pathname.startsWith("/admin");
   const isCRM = pathname.startsWith("/crm");
   const isHRMS = pathname.startsWith("/hrms");
   const isSupport = pathname.startsWith("/support");
@@ -90,15 +94,47 @@ export function Sidebar({ user }: SidebarProps) {
   // Determine user permissions and department
   const userDept = (user?.department || "").toLowerCase();
   const isSalesDepartment = userDept.includes("sales");
-  const canViewHierarchy =
+  const isSuperAdmin =
     user?.role === "Admin" ||
     user?.systemRole === "SUPER_ADMIN" ||
+    (user as any)?.isSuperAdmin === true;
+  const canViewHierarchy =
+    isSuperAdmin ||
     user?.systemRole === "ADMIN_HOD" ||
     user?.systemRole === "HR_ADMIN" ||
     user?.systemRole === "TEAM_LEADER";
 
   // Dynamic Navigation Sections based strictly on Active Product
   const getNavSections = (): NavSection[] => {
+    if (isAdmin) {
+      return [
+        {
+          section: "Executive Command",
+          items: [
+            { title: "Financial Overview", href: "/admin?tab=overview", icon: TrendingUp },
+            { title: "Sales Funnel & BDM", href: "/admin?tab=funnel", icon: Filter },
+            { title: "Activity Reports", href: "/admin?tab=activity", icon: Activity },
+            { title: "Workforce Attendance", href: "/admin?tab=attendance", icon: Users },
+          ],
+        },
+        {
+          section: "Enterprise Modules",
+          items: [
+            { title: "CRM Suite", href: "/crm", icon: Briefcase },
+            { title: "HRMS Portal", href: "/hrms", icon: Users },
+            { title: "Support Desk", href: "/support", icon: MessageSquare },
+          ],
+        },
+        {
+          section: "Settings and access",
+          items: [
+            { title: "Central Hub", href: "/portal", icon: LayoutGrid },
+            { title: "Settings", href: "/portal", icon: Settings },
+          ],
+        },
+      ];
+    }
+
     if (isCRM) {
       const crmItems: NavItem[] = [
         { title: "Dashboard", href: "/crm", icon: LayoutDashboard, shortcut: "⌘D" },
@@ -124,6 +160,15 @@ export function Sidebar({ user }: SidebarProps) {
         { title: "Services", href: "/crm/services", icon: Layers }
       );
 
+      const crmSettings: NavItem[] = [];
+      if (isSuperAdmin) {
+        crmSettings.push({ title: "Super Admin HQ", href: "/admin", icon: ShieldCheck });
+      }
+      crmSettings.push(
+        { title: "Central Hub", href: "/portal", icon: LayoutGrid },
+        { title: "Settings", href: "/portal", icon: Settings }
+      );
+
       return [
         {
           section: "CRM Modules",
@@ -131,10 +176,7 @@ export function Sidebar({ user }: SidebarProps) {
         },
         {
           section: "Settings and access",
-          items: [
-            { title: "Central Hub", href: "/portal", icon: LayoutGrid },
-            { title: "Settings", href: "/portal", icon: Settings },
-          ],
+          items: crmSettings,
         },
       ];
     }
@@ -157,6 +199,13 @@ export function Sidebar({ user }: SidebarProps) {
           icon: ShieldAlert,
         });
       }
+      if (isSuperAdmin) {
+        accessItems.push({
+          title: "Super Admin HQ",
+          href: "/admin",
+          icon: ShieldCheck,
+        });
+      }
       accessItems.push(
         { title: "Central Hub", href: "/portal", icon: LayoutGrid },
         { title: "Settings", href: "/portal", icon: Settings }
@@ -175,6 +224,15 @@ export function Sidebar({ user }: SidebarProps) {
     }
 
     if (isSupport) {
+      const supportSettings: NavItem[] = [];
+      if (isSuperAdmin) {
+        supportSettings.push({ title: "Super Admin HQ", href: "/admin", icon: ShieldCheck });
+      }
+      supportSettings.push(
+        { title: "Central Hub", href: "/portal", icon: LayoutGrid },
+        { title: "Settings", href: "/portal", icon: Settings }
+      );
+
       return [
         {
           section: "Support Desk",
@@ -186,24 +244,27 @@ export function Sidebar({ user }: SidebarProps) {
         },
         {
           section: "Settings and access",
-          items: [
-            { title: "Central Hub", href: "/portal", icon: LayoutGrid },
-            { title: "Settings", href: "/portal", icon: Settings },
-          ],
+          items: supportSettings,
         },
       ];
     }
 
     // Default / Global Fallback
+    const fallbackMain: NavItem[] = [];
+    if (isSuperAdmin) {
+      fallbackMain.push({ title: "Super Admin HQ", href: "/admin", icon: ShieldCheck });
+    }
+    fallbackMain.push(
+      { title: "Overview", href: "/portal", icon: Compass },
+      { title: "CRM Suite", href: "/crm", icon: Briefcase },
+      { title: "HRMS Portal", href: "/hrms", icon: Users },
+      { title: "Support Desk", href: "/support", icon: MessageSquare }
+    );
+
     return [
       {
         section: "Main menu",
-        items: [
-          { title: "Overview", href: "/portal", icon: Compass },
-          { title: "CRM Suite", href: "/crm", icon: Briefcase },
-          { title: "HRMS Portal", href: "/hrms", icon: Users },
-          { title: "Support Desk", href: "/support", icon: MessageSquare },
-        ],
+        items: fallbackMain,
       },
       {
         section: "Settings and access",
@@ -219,6 +280,7 @@ export function Sidebar({ user }: SidebarProps) {
 
   // Product Tagline & Code
   const getProductInfo = () => {
+    if (isAdmin) return { name: "BharatEdge", sub: "EXECUTIVE HQ", badgeColor: "bg-slate-900/10 text-slate-900 border-slate-300" };
     if (isCRM) return { name: "BharatEdge", sub: "CRM SUITE", badgeColor: "bg-amber-500/10 text-amber-700 border-amber-200" };
     if (isHRMS) return { name: "BharatEdge", sub: "HRMS PORTAL", badgeColor: "bg-sky-500/10 text-sky-700 border-sky-200" };
     if (isSupport) return { name: "BharatEdge", sub: "SUPPORT DESK", badgeColor: "bg-emerald-500/10 text-emerald-700 border-emerald-200" };
