@@ -1,26 +1,69 @@
 @import "tailwindcss";
 
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  --background: #FCFAF7;
+  --foreground: #18191B;
+
+  /* BharatEdge Brand Palette (Ref Image 1): #ACCAD5 & #F0944D */
+  --brand-cyan: #ACCAD5;
+  --brand-cyan-light: #EBF3F6;
+  --brand-cyan-muted: #CBDDE4;
+  --brand-cyan-dark: #588594;
+
+  --brand-orange: #F0944D;
+  --brand-orange-light: #FDEFE6;
+  --brand-orange-muted: #F7BA8C;
+  --brand-orange-dark: #C66318;
+
+  --brand-gradient: linear-gradient(135deg, #ACCAD5 0%, #E4B592 50%, #F0944D 100%);
+  --brand-gradient-v: linear-gradient(180deg, #ACCAD5 0%, #E4B592 50%, #F0944D 100%);
+  --brand-gradient-subtle: linear-gradient(135deg, rgba(172, 202, 213, 0.22) 0%, rgba(240, 148, 77, 0.18) 100%);
 }
 
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  --color-brand-cyan: var(--brand-cyan);
+  --color-brand-cyan-light: var(--brand-cyan-light);
+  --color-brand-cyan-muted: var(--brand-cyan-muted);
+  --color-brand-cyan-dark: var(--brand-cyan-dark);
+  --color-brand-orange: var(--brand-orange);
+  --color-brand-orange-light: var(--brand-orange-light);
+  --color-brand-orange-muted: var(--brand-orange-muted);
+  --color-brand-orange-dark: var(--brand-orange-dark);
+  --font-serif: var(--font-newsreader), "Playfair Display", Georgia, serif;
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
+@layer utilities {
+  .font-editorial {
+    font-family: var(--font-newsreader), "Playfair Display", Georgia, serif;
+  }
+  
+  .bg-brand-gradient {
+    background-image: linear-gradient(135deg, #ACCAD5 0%, #E4B592 50%, #F0944D 100%);
+  }
+  
+  .bg-brand-gradient-v {
+    background-image: linear-gradient(180deg, #ACCAD5 0%, #E4B592 50%, #F0944D 100%);
+  }
+
+  .text-brand-gradient {
+    background: linear-gradient(135deg, #4A7A8A 0%, #C66318 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+  }
+
+  .bg-brand-subtle {
+    background: linear-gradient(135deg, rgba(172, 202, 213, 0.16) 0%, rgba(240, 148, 77, 0.12) 100%);
+  }
+
+  .border-brand-gradient {
+    border-image: linear-gradient(135deg, #ACCAD5, #F0944D) 1;
   }
 }
 
-body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+/* Subtle background dotted grid */
+.bg-grid-subtle {
+  background-image: radial-gradient(rgba(0, 0, 0, 0.05) 1px, transparent 1px);
+  background-size: 24px 24px;
 }

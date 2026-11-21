@@ -1,0 +1,974 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  CRM
+  HRMS
+  Support
+  Admin
+}
+
+enum DealStage {
+  LEAD
+  QUALIFIED
+  PROPOSAL
+  NEGOTIATION
+  CLOSED_WON
+  CLOSED_LOST
+}
+
+enum LeadStatus {
+  NEW
+  CONTACTED
+  QUALIFIED
+  PROPOSAL_SENT
+  WON
+  LOST
+  JUNK
+}
+
+enum QuotationStatus {
+  DRAFT
+  SENT
+  ACCEPTED
+  REJECTED
+  EXPIRED
+}
+
+enum PaymentType {
+  FIRST_PAYMENT
+  REMAINING_PAYMENT
+}
+
+enum PaymentVerificationStatus {
+  UNVERIFIED
+  VERIFIED
+  REJECTED
+}
+
+enum LegalStatus {
+  PENDING
+  UNDER_REVIEW
+  DRAFTED
+  EXECUTED
+  REJECTED
+}
+
+enum OperationStage {
+  OPERATION
+  QUALITY
+}
+
+enum TicketStatus {
+  OPEN
+  IN_PROGRESS
+  PENDING_CUSTOMER
+  ESCALATED
+  RESOLVED
+  CLOSED
+}
+
+enum TicketPriority {
+  LOW
+  MEDIUM
+  HIGH
+  URGENT
+}
+
+enum AttendanceStatus {
+  PRESENT
+  LATE
+  HALF_DAY
+  ON_LEAVE
+  ABSENT
+}
+
+enum TrackerStatus {
+  ACTIVE
+  IDLE
+  CLOCKED_OUT
+}
+
+enum LeaveType {
+  CASUAL
+  SICK
+  EARNED
+  MATERNITY
+  PATERNITY
+  UNPAID
+}
+
+enum ApprovalStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+enum CalendarEventType {
+  HOLIDAY
+  EVENT
+  IMPORTANT
+}
+
+enum PolicyStatus {
+  PUBLISHED
+  DRAFT
+  ARCHIVED
+}
+
+enum NotificationType {
+  INFO
+  ACTION_REQUIRED
+  SUCCESS
+  WARNING
+}
+
+enum Language {
+  Hindi
+  English
+  Gujarati
+}
+
+enum SystemRole {
+  TEAM_MEMBER
+  TEAM_LEADER
+  ADMIN_HOD
+  HR_ADMIN
+  SUPER_ADMIN
+}
+
+enum SalaryEntity {
+  BSPL
+  BSAPL
+}
+
+enum EmployeeStatus {
+  ACTIVE
+  ONBOARDING
+  ON_LEAVE
+  TERMINATED
+}
+
+// ==========================================
+// CRM MODULES
+// ==========================================
+
+model Company {
+  id               String    @id @default(uuid())
+  name             String
+  industry         String?
+  companyType      String?
+  incorporatedDate DateTime? @db.Date
+  website          String?
+  gstNumber        String?
+  panNumber        String?
+  address          String?
+  city             String?
+  state            String?
+  country          String    @default("India")
+
+  createdById      String?
+  createdBy        Employee? @relation("CreatedCompanies", fields: [createdById], references: [id], onDelete: SetNull)
+
+  clients Client[]
+  deals   Deal[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([name])
+  @@index([createdById])
+  @@map("companies")
+}
+
+model Client {
+  id                 String    @id @default(uuid())
+  clientNumber       String    @unique
+  name               String
+  phone              String    @unique
+  alternatePhone     String?
+  email              String?
+  gender             String?
+  companyName        String?
+  companyId          String?
+  company            Company?  @relation(fields: [companyId], references: [id], onDelete: SetNull)
+  gstNumber          String?
+  panNumber          String?
+  address            String?
+  city               String?
+  state              String?
+  country            String    @default("India")
+  assignedEmployeeId String?
+  assignedEmployee   Employee? @relation("AssignedClients", fields: [assignedEmployeeId], references: [id], onDelete: SetNull)
+  createdById        String?
+  createdBy          Employee? @relation("CreatedClients", fields: [createdById], references: [id], onDelete: SetNull)
+
+  deals      Deal[]
+  quotations Quotation[]
+  payments   PaymentRecord[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([phone])
+  @@index([email])
+  @@index([companyId])
+  @@index([assignedEmployeeId])
+  @@index([createdById])
+  @@map("clients")
+}
+
+model Lead {
+  id                 String     @id @default(uuid())
+  leadNumber         String     @unique
+  name               String
+  email              String?
+  phone              String
+  companyName        String?
+  source             String     @default("WEBSITE")
+  status             LeadStatus @default(NEW)
+  notes              String?    @db.Text
+  estimatedBudget    Decimal?   @db.Decimal(12, 2)
+  assignedEmployeeId String?
+  assignedEmployee   Employee?  @relation("AssignedLeads", fields: [assignedEmployeeId], references: [id], onDelete: SetNull)
+  createdById        String?
+  createdBy          Employee?  @relation("CreatedLeads", fields: [createdById], references: [id], onDelete: SetNull)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([status])
+  @@index([phone])
+  @@index([email])
+  @@index([assignedEmployeeId])
+  @@index([createdById])
+  @@map("leads")
+}
+
+model Service {
+  id             String   @id @default(uuid())
+  name           String   @unique
+  code           String?  @unique
+  description    String?  @db.Text
+  category       String?
+  minimumPrice   Decimal  @db.Decimal(12, 2)
+  outsourcePrice Decimal  @default(0) @db.Decimal(12, 2)
+  sacCode        String?
+  defaultGstRate Float    @default(18.0)
+  isActive       Boolean  @default(true)
+
+  dealServices       DealService[]
+  quotationServices  QuotationService[]
+  internalOperations InternalOperation[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([category])
+  @@index([isActive])
+  @@map("services")
+}
+
+model ProspectTab {
+  id           String          @id @default(uuid())
+  name         String
+  teamLeaderId String?
+  teamLeader   Employee?       @relation("TLProspectTabs", fields: [teamLeaderId], references: [id], onDelete: SetNull)
+  order        Int             @default(0)
+  isActive     Boolean         @default(true)
+
+  sheets  ProspectSheet[]
+  columns ProspectColumn[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([teamLeaderId])
+  @@map("prospect_tabs")
+}
+
+model ProspectSheet {
+  id            String          @id @default(uuid())
+  tabId         String
+  tab           ProspectTab     @relation(fields: [tabId], references: [id], onDelete: Cascade)
+  name          String
+  assignedBdmId String?
+  assignedBdm   Employee?       @relation("BDMProspectSheets", fields: [assignedBdmId], references: [id], onDelete: SetNull)
+  order         Int             @default(0)
+
+  rows    ProspectRow[]
+  columns ProspectColumn[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([tabId])
+  @@index([assignedBdmId])
+  @@map("prospect_sheets")
+}
+
+model ProspectColumn {
+  id         String         @id @default(uuid())
+  tabId      String?
+  tab        ProspectTab?   @relation(fields: [tabId], references: [id], onDelete: Cascade)
+  sheetId    String?
+  sheet      ProspectSheet? @relation(fields: [sheetId], references: [id], onDelete: Cascade)
+  name       String
+  key        String
+  type       String         @default("TEXT")
+  options    Json?
+  order      Int            @default(0)
+  isRequired Boolean        @default(false)
+  isSystem   Boolean        @default(false)
+  width      Int            @default(160)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([tabId])
+  @@index([sheetId])
+  @@map("prospect_columns")
+}
+
+model ProspectRow {
+  id            String        @id @default(uuid())
+  sheetId       String
+  sheet         ProspectSheet @relation(fields: [sheetId], references: [id], onDelete: Cascade)
+  rowIndex      Int           @default(0)
+  data          Json
+  assignedBdmId String?
+  assignedBdm   Employee?     @relation("BDMProspectRows", fields: [assignedBdmId], references: [id], onDelete: SetNull)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([sheetId])
+  @@index([assignedBdmId])
+  @@map("prospect_rows")
+}
+
+model Quotation {
+  id              String          @id @default(uuid())
+  quotationNumber String          @unique
+  clientId        String?
+  client          Client?         @relation(fields: [clientId], references: [id], onDelete: SetNull)
+  clientName      String
+  clientEmail     String?
+  clientPhone     String?
+  clientAlternatePhone String?
+  clientGender    String?
+  clientState     String?
+  clientCity      String?
+  clientAddress   String?
+
+  companyId       String?
+  companyName     String?
+  companyType     String?
+  companyIncorporatedDate DateTime? @db.Date
+  companyAddress  String?
+
+  dealId          String?
+  deal            Deal?           @relation(fields: [dealId], references: [id], onDelete: SetNull)
+  subTotal        Decimal         @db.Decimal(12, 2)
+  discountAmount  Decimal         @default(0) @db.Decimal(12, 2)
+  gstRate         Float           @default(18.0)
+  gstAmount       Decimal         @db.Decimal(12, 2)
+  grandTotal      Decimal         @db.Decimal(12, 2)
+  status          QuotationStatus @default(DRAFT)
+  validUntil      DateTime?       @db.Date
+  terms           String?         @db.Text
+  notes           String?         @db.Text
+  pdfUrl          String?
+  pdfKey          String?
+  emailSentAt     DateTime?
+  preparedById    String?
+  preparedBy      Employee?       @relation("PreparedQuotations", fields: [preparedById], references: [id], onDelete: SetNull)
+
+  services QuotationService[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([clientId])
+  @@index([dealId])
+  @@index([status])
+  @@index([preparedById])
+  @@map("quotations")
+}
+
+model QuotationService {
+  id               String    @id @default(uuid())
+  quotationId      String
+  quotation        Quotation @relation(fields: [quotationId], references: [id], onDelete: Cascade)
+  serviceId        String?
+  service          Service?  @relation(fields: [serviceId], references: [id], onDelete: SetNull)
+  serviceName      String
+  description      String?
+  unitPrice        Decimal   @default(0) @db.Decimal(12, 2)
+  quantity         Int       @default(1)
+  totalAmount      Decimal   @default(0) @db.Decimal(12, 2)
+  gstRate          Float     @default(18.0)
+  gstAmount        Decimal   @default(0) @db.Decimal(12, 2)
+  withoutGstAmount Decimal   @default(0) @db.Decimal(12, 2)
+  totalPrice       Decimal   @default(0) @db.Decimal(12, 2)
+  remarks          String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([quotationId])
+  @@index([serviceId])
+  @@map("quotation_services")
+}
+
+model PaymentRecord {
+  id             String                    @id @default(uuid())
+  receiptNumber  String                    @unique
+  clientId       String
+  client         Client                    @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  dealId         String?
+  deal           Deal?                     @relation(fields: [dealId], references: [id], onDelete: SetNull)
+  amount         Decimal                   @db.Decimal(12, 2)
+  bankType       SalaryEntity              @default(BSPL)
+  paymentType    PaymentType               @default(FIRST_PAYMENT)
+  status         PaymentVerificationStatus @default(UNVERIFIED)
+  paymentMode    String                    @default("BANK_TRANSFER")
+  transactionRef String?
+  screenshotUrl  String?
+  screenshotKey  String?
+  paymentDate    DateTime                  @default(now()) @db.Date
+  remarks        String?                   @db.Text
+  isConvertedToDeal Boolean                  @default(false)
+  verifiedById   String?
+  verifiedBy     Employee?                 @relation("VerifiedPayments", fields: [verifiedById], references: [id], onDelete: SetNull)
+  verifiedAt     DateTime?
+  recordedById   String?
+  recordedBy     Employee?                 @relation("RecordedPayments", fields: [recordedById], references: [id], onDelete: SetNull)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([clientId])
+  @@index([dealId])
+  @@index([status])
+  @@index([bankType])
+  @@index([paymentType])
+  @@index([recordedById])
+  @@index([verifiedById])
+  @@map("payment_records")
+}
+
+model Deal {
+  id                String    @id @default(uuid())
+  dealNumber        String?   @unique
+  title             String
+  value             Decimal   @db.Decimal(12, 2)
+  currency          String    @default("INR")
+  stage             DealStage @default(LEAD)
+  probability       Float     @default(0.1)
+  expectedCloseDate DateTime?
+  companyName       String
+  contactName       String?
+  contactEmail      String?
+  contactPhone      String?
+  notes             String?
+
+  clientId          String?
+  client            Client?   @relation(fields: [clientId], references: [id], onDelete: SetNull)
+  companyId         String?
+  company           Company?  @relation(fields: [companyId], references: [id], onDelete: SetNull)
+
+  subTotal          Decimal?  @default(0) @db.Decimal(12, 2)
+  gstRate           Float?    @default(18.0)
+  gstAmount         Decimal?  @default(0) @db.Decimal(12, 2)
+  totalValue        Decimal?  @db.Decimal(12, 2)
+  amountReceived    Decimal   @default(0) @db.Decimal(12, 2)
+  amountPending     Decimal   @default(0) @db.Decimal(12, 2)
+
+  bookingDate       DateTime? @default(now()) @db.Date
+  panNumber         String?
+  partnerBdmId      String?
+  partnerBdm        Employee? @relation("PartnerDeals", fields: [partnerBdmId], references: [id], onDelete: SetNull)
+  accountsStatus    String    @default("DRAFT")
+  accountsVerifiedAt DateTime?
+  paymentScreenshotUrl String?
+  paymentScreenshotKey String?
+
+  teamType          String?
+  internalLegalStatus LegalStatus @default(PENDING)
+  legalDocType      String?
+  agreementTerms    String?   @db.Text
+  legalRemarks      String?   @db.Text
+  legalDocSenderName   String?
+  legalDocSenderDate   DateTime? @db.Date
+  legalDocReceiverName String?
+  legalDocReceiverDate DateTime? @db.Date
+  isQualityPassed      Boolean   @default(false)
+  qualityRemarks       String?   @db.Text
+
+  assignedEmployeeId String?   @map("assignedUserId")
+  assignedEmployee   Employee? @relation("AssignedDeals", fields: [assignedEmployeeId], references: [id], onDelete: SetNull)
+
+  services           DealService[]
+  documents          DealDocument[]
+  internalOperations InternalOperation[]
+  quotations         Quotation[]
+  payments           PaymentRecord[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([stage])
+  @@index([assignedEmployeeId])
+  @@index([clientId])
+  @@index([companyId])
+  @@map("deals")
+}
+
+model DealService {
+  id             String   @id @default(uuid())
+  dealId         String
+  deal           Deal     @relation(fields: [dealId], references: [id], onDelete: Cascade)
+  serviceId      String?
+  service        Service? @relation(fields: [serviceId], references: [id], onDelete: SetNull)
+  serviceName    String
+  unitPrice          Decimal  @db.Decimal(12, 2)
+  quantity           Int      @default(1)
+  gstRate            Float    @default(18.0)
+  gstAmount          Decimal  @db.Decimal(12, 2)
+  withoutGstAmount   Decimal  @default(0) @db.Decimal(12, 2)
+  totalPrice         Decimal  @db.Decimal(12, 2)
+  amountReceived     Decimal  @default(0) @db.Decimal(12, 2)
+  receivedGst        Decimal  @default(0) @db.Decimal(12, 2)
+  receivedWithoutGst Decimal  @default(0) @db.Decimal(12, 2)
+  amountPending      Decimal  @default(0) @db.Decimal(12, 2)
+  teamType           String?
+  legalStatus        LegalStatus @default(PENDING)
+  legalDocType       String?
+  agreementTerms     String?     @db.Text
+  legalRemarks       String?     @db.Text
+  minimumPrice       Decimal  @default(0) @db.Decimal(12, 2)
+  outsourceCost      Decimal  @default(0) @db.Decimal(12, 2)
+  remarks            String?
+
+  internalOperation InternalOperation?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([dealId])
+  @@index([serviceId])
+  @@map("deal_services")
+}
+
+model DealDocument {
+  id           String    @id @default(uuid())
+  dealId       String
+  deal         Deal      @relation(fields: [dealId], references: [id], onDelete: Cascade)
+  title        String
+  docType      String    @default("OTHER")
+  fileUrl      String
+  fileKey      String
+  fileSize     Int?
+  mimeType     String?
+  uploadedById String?
+  uploadedBy   Employee? @relation("UploadedDealDocs", fields: [uploadedById], references: [id], onDelete: SetNull)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([dealId])
+  @@index([uploadedById])
+  @@map("deal_documents")
+}
+
+model InternalOperation {
+  id              String         @id @default(uuid())
+  operationNumber String         @unique
+  dealId          String
+  deal            Deal           @relation(fields: [dealId], references: [id], onDelete: Cascade)
+  dealServiceId   String?        @unique
+  dealService     DealService?   @relation(fields: [dealServiceId], references: [id], onDelete: SetNull)
+  serviceId       String?
+  service         Service?       @relation(fields: [serviceId], references: [id], onDelete: SetNull)
+  serviceName     String
+  teamType        String
+  stage           OperationStage @default(OPERATION)
+  internalStage   String         @default("INITIATION")
+  status          String         @default("IN_PROGRESS")
+  assignedTlId    String?
+  assignedTl      Employee?      @relation("AssignedTlOperations", fields: [assignedTlId], references: [id], onDelete: SetNull)
+  assignedTmId    String?
+  assignedTm      Employee?      @relation("AssignedTmOperations", fields: [assignedTmId], references: [id], onDelete: SetNull)
+  workflowData    Json?
+  qualityScore    Int?
+  qualityFeedback String?        @db.Text
+  dueDate         DateTime?      @db.Date
+  completionDate  DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([dealId])
+  @@index([dealServiceId])
+  @@index([serviceId])
+  @@index([assignedTlId])
+  @@index([assignedTmId])
+  @@index([stage])
+  @@map("internal_operations")
+}
+
+model SalesTarget {
+  id                 String    @id @default(uuid())
+  bdmId              String
+  bdm                Employee  @relation("BdmSalesTargets", fields: [bdmId], references: [id], onDelete: Cascade)
+  setById            String?
+  setBy              Employee? @relation("HodSalesTargetsSet", fields: [setById], references: [id], onDelete: SetNull)
+  month              Int
+  year               Int
+  targetAmount       Decimal   @db.Decimal(12, 2)
+  targetDealsCount   Int?      @default(0)
+  achievedAmount     Decimal   @default(0) @db.Decimal(12, 2)
+  achievedDealsCount Int       @default(0)
+  remarks            String?   @db.Text
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([bdmId, month, year])
+  @@index([bdmId])
+  @@index([setById])
+  @@index([month, year])
+  @@map("sales_targets")
+}
+
+// ==========================================
+// SUPPORT MODULES
+// ==========================================
+
+model Ticket {
+  id           String         @id @default(uuid())
+  ticketNumber String         @unique
+  subject      String
+  description  String
+  status       TicketStatus   @default(OPEN)
+  priority     TicketPriority @default(MEDIUM)
+  source       String         @default("WEBSITE")
+
+  customerName  String
+  customerEmail String
+  customerPhone String?
+
+  assignedEmployeeId String?   @map("assignedUserId")
+  assignedEmployee   Employee? @relation("AssignedTickets", fields: [assignedEmployeeId], references: [id], onDelete: SetNull)
+
+  auditLogs  AuditLog[]
+  resolvedAt DateTime?
+  createdAt  DateTime   @default(now())
+  updatedAt  DateTime   @updatedAt
+
+  @@index([status])
+  @@index([priority])
+  @@map("tickets")
+}
+
+model AuditLog {
+  id               String   @id @default(uuid())
+  ticketId         String
+  ticket           Ticket   @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  auditorId        String
+  auditor          Employee @relation("AuditedBy", fields: [auditorId], references: [id], onDelete: Cascade)
+  qualityScore     Int
+  complianceStatus String
+  feedbackComments String
+  escalatedToHOD   Boolean  @default(false)
+  createdAt        DateTime @default(now())
+
+  @@index([ticketId])
+  @@index([auditorId])
+  @@map("audit_logs")
+}
+
+// ==========================================
+// HRMS MODULES & UNIFIED EMPLOYEE
+// ==========================================
+
+model Attendance {
+  id               String              @id @default(uuid())
+  employeeId       String
+  employee         Employee            @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  date             DateTime            @db.Date
+  clockInTime      DateTime?
+  clockOutTime     DateTime?
+  totalActiveHours Float               @default(0)
+  currentStatus    TrackerStatus       @default(CLOCKED_OUT)
+  sessions         AttendanceSession[]
+  locationCoordinates String?
+  ipAddress           String?
+  remarks             String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([employeeId, date])
+  @@index([employeeId])
+  @@index([date])
+  @@index([currentStatus])
+  @@map("attendance_records")
+}
+
+model AttendanceSession {
+  id              String        @id @default(uuid())
+  attendanceId    String
+  attendance      Attendance    @relation(fields: [attendanceId], references: [id], onDelete: Cascade)
+  startTime       DateTime
+  endTime         DateTime?
+  status          TrackerStatus @default(ACTIVE)
+  durationMinutes Float?
+  createdAt       DateTime      @default(now())
+
+  @@index([attendanceId])
+  @@index([status])
+  @@map("attendance_sessions")
+}
+
+model Employee {
+  id String @id @default(uuid())
+
+  // Authentication & Access Credentials (Consolidated Unified Model)
+  passwordHash String    @default("$2b$10$GGaEdLArZYXpp/72WEHUvO0Xu.7zefw9x4NbtNh7/GppPFDl4ru..")
+  otp          String?
+  otpExpiry    DateTime?
+  otpAttempts  Int       @default(0)
+  role         Role      @default(HRMS)
+  phone        String?
+  avatarUrl    String?
+  jobTitle     String?
+
+  // Personal Details
+  firstName        String
+  middleName       String?
+  lastName         String
+  dateOfBirth      DateTime  @db.Date
+  gender           String
+  nationality      String    @default("Indian")
+  maritalStatus    String    @default("Single")
+  contactNumber    String
+  personalEmail    String
+  permanentAddress String
+  currentAddress   String
+
+  // Education & Skills
+  educationQualification     String
+  professionalCertifications String?
+  keySkills                  String?
+  languagesKnown             Language[]
+
+  // Emergency & Family Details
+  emergencyFirstName    String
+  emergencyLastName     String
+  emergencyNumber       String
+  emergencyRelationship String
+
+  // Department & Access Hierarchy
+  employeeId       String      @unique
+  dateOfJoining    DateTime    @db.Date
+  department       String
+  designation      String
+  workEmail        String      @unique
+  employmentType   String      @default("Full-Time")
+  previousEmployer String?
+  totalExperience  String?
+  branch           String      @default("Headquarters - Ahmedabad")
+  systemRole       SystemRole  @default(TEAM_MEMBER)
+  monthlyTarget    Decimal?    @db.Decimal(12, 2)
+
+  // Self-Relations for Hierarchy
+  teamLeaderId String?
+  teamLeader   Employee?  @relation("TeamLeaderRelation", fields: [teamLeaderId], references: [id], onDelete: SetNull)
+  teamMembers  Employee[] @relation("TeamLeaderRelation")
+
+  reportingManagerId String?
+  reportingManager   Employee?  @relation("ManagerRelation", fields: [reportingManagerId], references: [id], onDelete: SetNull)
+  subordinates       Employee[] @relation("ManagerRelation")
+
+  // Attendance Records
+  attendances Attendance[]
+
+  // Leave Management Relations
+  leaveBalances   LeaveBalance[]
+  leaveRequests   LeaveRequest[] @relation("EmployeeLeaveRequests")
+  tlLeaveReviews  LeaveRequest[] @relation("TLLeaveReviews")
+  hrLeaveReviews  LeaveRequest[] @relation("HRLeaveReviews")
+
+  // Enterprise Modules Assigned Relations
+  assignedDeals   Deal[]         @relation("AssignedDeals")
+  partnerDeals    Deal[]         @relation("PartnerDeals")
+  assignedTickets Ticket[]       @relation("AssignedTickets")
+  auditedLogs     AuditLog[]     @relation("AuditedBy")
+  notifications   Notification[]
+
+  // CRM Module Relations
+  createdCompanies      Company[]           @relation("CreatedCompanies")
+  createdClients        Client[]            @relation("CreatedClients")
+  createdLeads          Lead[]              @relation("CreatedLeads")
+  assignedLeads         Lead[]              @relation("AssignedLeads")
+  assignedClients       Client[]            @relation("AssignedClients")
+  tlProspectTabs        ProspectTab[]       @relation("TLProspectTabs")
+  bdmProspectSheets     ProspectSheet[]     @relation("BDMProspectSheets")
+  bdmProspectRows       ProspectRow[]       @relation("BDMProspectRows")
+  preparedQuotations    Quotation[]         @relation("PreparedQuotations")
+  verifiedPayments      PaymentRecord[]     @relation("VerifiedPayments")
+  recordedPayments      PaymentRecord[]     @relation("RecordedPayments")
+  uploadedDealDocs      DealDocument[]      @relation("UploadedDealDocs")
+  assignedTlOperations  InternalOperation[] @relation("AssignedTlOperations")
+  assignedTmOperations  InternalOperation[] @relation("AssignedTmOperations")
+  salesTargets          SalesTarget[]       @relation("BdmSalesTargets")
+  salesTargetsSet       SalesTarget[]       @relation("HodSalesTargetsSet")
+
+  // Bank & Statutory Details
+  bankAccountNumber      String
+  bankName               String
+  ifscCode               String
+  panNumber              String
+  aadhaarNumber          String
+  passportNumber         String?
+  drivingLicenseNumber   String?
+  salaryEntity           SalaryEntity @default(BSPL)
+  pfApplicable           Boolean      @default(true)
+  esicNumber             String?
+  uanNumber              String?
+  medicalInsuranceNumber String?
+
+  // Documents (File Uploads / URLs / Stored Reference Keys)
+  passbookChequeUrl        String?
+  secondaryEduProofUrl     String?
+  graduationMarkSheetsUrl  String?
+  offerRelievingLettersUrl String?
+  panCardCopyUrl           String?
+  addressAgeProofUrl       String?
+  bankStatementUrl         String?
+  salarySlipsUrl           String?
+  passportPhotoUrl         String?
+
+  status    EmployeeStatus @default(ACTIVE)
+  createdAt DateTime       @default(now())
+  updatedAt DateTime       @updatedAt
+
+  @@index([workEmail])
+  @@index([role])
+  @@index([department])
+  @@index([systemRole])
+  @@index([status])
+  @@map("employees")
+}
+
+model LeaveBalance {
+  id             String    @id @default(uuid())
+  employeeId     String
+  employee       Employee  @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  leaveType      LeaveType
+  year           Int       @default(2026)
+  allocatedDays  Float     @default(12)
+  usedDays       Float     @default(0)
+  remainingDays  Float     @default(12)
+
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  @@unique([employeeId, leaveType, year])
+  @@index([employeeId])
+  @@map("leave_balances")
+}
+
+model LeaveRequest {
+  id           String         @id @default(uuid())
+  employeeId   String
+  employee     Employee       @relation("EmployeeLeaveRequests", fields: [employeeId], references: [id], onDelete: Cascade)
+  leaveType    LeaveType
+  startDate    DateTime       @db.Date
+  endDate      DateTime       @db.Date
+  totalDays    Float
+  reason       String
+
+  // 2-Tier Approval Flow: TL -> HR Admin -> Final Status
+  teamLeaderId String?
+  teamLeader   Employee?      @relation("TLLeaveReviews", fields: [teamLeaderId], references: [id], onDelete: SetNull)
+  tlStatus     ApprovalStatus @default(PENDING)
+  tlComments   String?
+  tlReviewedAt DateTime?
+
+  hrAdminId    String?
+  hrAdmin      Employee?      @relation("HRLeaveReviews", fields: [hrAdminId], references: [id], onDelete: SetNull)
+  hrStatus     ApprovalStatus @default(PENDING)
+  hrComments   String?
+  hrReviewedAt DateTime?
+
+  finalStatus  ApprovalStatus @default(PENDING)
+
+  createdAt    DateTime       @default(now())
+  updatedAt    DateTime       @updatedAt
+
+  @@index([employeeId])
+  @@index([teamLeaderId])
+  @@index([hrAdminId])
+  @@index([finalStatus])
+  @@map("leave_requests")
+}
+
+model CalendarEvent {
+  id          String            @id @default(uuid())
+  title       String
+  date        DateTime          @db.Date
+  type        CalendarEventType @default(EVENT)
+  startTime   String?
+  endTime     String?
+  description String?
+  createdBy   String?
+  createdAt   DateTime          @default(now())
+  updatedAt   DateTime          @updatedAt
+
+  @@index([date])
+  @@index([type])
+  @@map("calendar_events")
+}
+
+model CompanyPolicy {
+  id            String       @id @default(uuid())
+  title         String
+  category      String
+  content       String       @db.Text
+  documentUrl   String?
+  effectiveDate DateTime     @db.Date
+  status        PolicyStatus @default(PUBLISHED)
+  createdBy     String?
+  createdAt     DateTime     @default(now())
+  updatedAt     DateTime     @updatedAt
+
+  @@index([category])
+  @@index([status])
+  @@map("company_policies")
+}
+
+model Notification {
+  id          String           @id @default(uuid())
+  recipientId String
+  employee    Employee         @relation(fields: [recipientId], references: [id], onDelete: Cascade)
+  title       String
+  message     String
+  type        NotificationType @default(INFO)
+  isRead      Boolean          @default(false)
+  actionUrl   String?
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
+
+  @@index([recipientId])
+  @@index([isRead])
+  @@map("notifications")
+}
