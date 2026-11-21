@@ -224,8 +224,7 @@ export async function assertSuperAdmin() {
 
   const isSuperAdmin =
     user.role === Role.Admin ||
-    user.systemRole === SystemRole.SUPER_ADMIN ||
-    (user as any).isSuperAdmin === true;
+    user.systemRole === SystemRole.SUPER_ADMIN;
 
   if (!isSuperAdmin) {
     throw new Error("FORBIDDEN");
@@ -595,7 +594,7 @@ export async function getSuperAdminDashboardData(
   const prospectsCount = prospectRowsInPeriod.length;
   const quotationsCount = quotationsInPeriod.length;
   const quotationsTotalValue = quotationsInPeriod.reduce((acc, q) => {
-    const qVal = q.services.reduce((sAcc: number, s: any) => sAcc + Number(s.totalPrice || 0), 0);
+    const qVal = q.services.reduce((sAcc: number, s: { totalPrice?: unknown }) => sAcc + Number(s.totalPrice || 0), 0);
     return acc + qVal;
   }, 0);
   const paymentsCount = paymentsInPeriod.length;
@@ -984,7 +983,7 @@ export async function getSuperAdminDashboardData(
   let currentlyActive = 0;
   let idle = 0;
   let clockedOut = 0;
-  let onLeave = todayLeaves.length;
+  const onLeave = todayLeaves.length;
 
   for (const att of todayAttendance) {
     if (att.currentStatus === TrackerStatus.ACTIVE) currentlyActive += 1;

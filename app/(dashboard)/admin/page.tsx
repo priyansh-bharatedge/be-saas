@@ -31,8 +31,7 @@ export default async function SuperAdminDashboardPage({
 
   const isSuperAdmin =
     user.role === Role.Admin ||
-    user.systemRole === SystemRole.SUPER_ADMIN ||
-    (user as any).isSuperAdmin === true;
+    user.systemRole === SystemRole.SUPER_ADMIN;
 
   if (!isSuperAdmin) {
     // Non-Super Admin roles are strictly blocked
@@ -40,7 +39,13 @@ export default async function SuperAdminDashboardPage({
   }
 
   const resolvedParams = await searchParams;
-  const range = (resolvedParams.range || "monthly") as any;
+  const range = (resolvedParams.range || "monthly") as
+    | "daily"
+    | "weekly"
+    | "monthly"
+    | "quarterly"
+    | "yearly"
+    | "custom";
   const from = resolvedParams.from;
   const to = resolvedParams.to;
 

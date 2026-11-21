@@ -14,8 +14,7 @@ export async function GET(req: NextRequest) {
 
     const isSuperAdmin =
       user.role === Role.Admin ||
-      user.systemRole === SystemRole.SUPER_ADMIN ||
-      (user as any).isSuperAdmin === true;
+      user.systemRole === SystemRole.SUPER_ADMIN;
 
     if (!isSuperAdmin) {
       return NextResponse.json(
@@ -25,7 +24,13 @@ export async function GET(req: NextRequest) {
     }
 
     const { searchParams } = new URL(req.url);
-    const range = (searchParams.get("range") || "monthly") as any;
+    const range = (searchParams.get("range") || "monthly") as
+      | "daily"
+      | "weekly"
+      | "monthly"
+      | "quarterly"
+      | "yearly"
+      | "custom";
     const from = searchParams.get("from") || undefined;
     const to = searchParams.get("to") || undefined;
 

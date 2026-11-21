@@ -14,8 +14,7 @@ export async function GET(req: NextRequest) {
 
     const isSuperAdmin =
       user.role === Role.Admin ||
-      user.systemRole === SystemRole.SUPER_ADMIN ||
-      (user as any).isSuperAdmin === true;
+      user.systemRole === SystemRole.SUPER_ADMIN;
 
     if (!isSuperAdmin) {
       return NextResponse.json(
@@ -25,16 +24,23 @@ export async function GET(req: NextRequest) {
     }
 
     const { searchParams } = new URL(req.url);
-    const range = (searchParams.get("range") || "monthly") as any;
+    const range = (searchParams.get("range") || "monthly") as
+      | "daily"
+      | "weekly"
+      | "monthly"
+      | "quarterly"
+      | "yearly"
+      | "custom";
     const from = searchParams.get("from") || undefined;
     const to = searchParams.get("to") || undefined;
 
     const data = await getSuperAdminDashboardData({ range, from, to });
     return NextResponse.json({ success: true, data });
-  } catch (error: any) {
+  } catch (error: unknown) {
+    const errMessage = error instanceof Error ? error.message : "Failed to fetch dashboard metrics";
     console.error("[SuperAdmin Dashboard API Error]:", error);
     return NextResponse.json(
-      { error: error?.message || "Failed to fetch dashboard metrics" },
+      { error: errMessage },
       { status: 500 }
     );
   }
