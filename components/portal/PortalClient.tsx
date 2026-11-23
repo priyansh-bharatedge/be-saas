@@ -15,6 +15,7 @@ import {
   LogOut,
   AlertOctagon,
   ShieldCheck,
+  MessageSquare,
 } from "lucide-react";
 import { motion } from "framer-motion";
 
@@ -79,6 +80,19 @@ export function PortalClient({ initialUser }: PortalClientProps) {
       iconBg: "bg-gradient-to-br from-[#FDEFE6] to-[#E4B592]/40 text-[#C66318] border border-[#F0944D]/20",
       hoverBorder: "hover:border-[#C66318]/50 hover:shadow-[#F0944D]/10",
       requiredRoles: "Admin, Support",
+    },
+    {
+      code: "chat" as ModuleCode,
+      title: "Team Chat",
+      subtitle: "Internal Messaging & Collab",
+      description: "Direct messages, group discussions, and rich file sharing",
+      href: "/chat",
+      isAllowed: true, // Accessible to all authenticated employees
+      icon: MessageSquare,
+      accentColor: "#588594",
+      iconBg: "bg-gradient-to-br from-[#EBF3F6] to-[#CBDDE4]/60 text-[#3D6472] border border-[#ACCAD5]/40",
+      hoverBorder: "hover:border-[#588594] hover:shadow-[#ACCAD5]/25",
+      requiredRoles: "All Employees",
     },
   ];
 
@@ -197,7 +211,7 @@ export function PortalClient({ initialUser }: PortalClientProps) {
         )}
 
         {/* Sleek Rounded Square Grid Cards (Ref: Modern Bento/Squircle Layout) */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 max-w-5xl mx-auto w-full">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5 max-w-6xl mx-auto w-full">
           {gateways.map((gate, index) => {
             const Icon = gate.icon;
 

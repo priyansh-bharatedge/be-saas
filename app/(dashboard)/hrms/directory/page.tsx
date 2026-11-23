@@ -1,8 +1,8 @@
 import { Suspense } from "react";
 import { getEmployeesAction } from "@/lib/actions/employee";
 import { EmployeeListView } from "@/components/hrms/EmployeeListView";
-import { Users, UserPlus } from "lucide-react";
-import Link from "next/link";
+import { getCurrentUser } from "@/lib/auth/session";
+import { canCreateEmployee } from "@/lib/auth/rbac";
 
 export const dynamic = "force-dynamic";
 
@@ -12,6 +12,9 @@ export const metadata = {
 };
 
 export default async function HRMSDirectoryPage() {
+  const user = await getCurrentUser();
+  const canCreate = canCreateEmployee(user);
+
   const res = await getEmployeesAction({ page: 1, pageSize: 20 });
   const employees = res.success && res.data ? res.data.employees : [];
   const totalCount = res.success && res.data ? res.data.total : 0;
@@ -35,7 +38,11 @@ export default async function HRMSDirectoryPage() {
 
       {/* Main Responsive Data Table Component */}
       <Suspense fallback={<div className="p-12 text-center text-slate-400 font-mono text-xs">Loading Workforce Directory...</div>}>
-        <EmployeeListView initialEmployees={employees as any} totalCount={totalCount} />
+        <EmployeeListView
+          initialEmployees={employees as any}
+          totalCount={totalCount}
+          canCreate={canCreate}
+        />
       </Suspense>
     </div>
   );

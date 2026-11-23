@@ -1,4 +1,7 @@
 import { Suspense } from "react";
+import { redirect } from "next/navigation";
+import { getCurrentUser } from "@/lib/auth/session";
+import { canCreateEmployee } from "@/lib/auth/rbac";
 import { getHierarchyManagersAction } from "@/lib/actions/employee";
 import { EmployeeWizard } from "@/components/hrms/EmployeeWizard";
 import Link from "next/link";
@@ -12,6 +15,11 @@ export const metadata = {
 };
 
 export default async function NewEmployeePage() {
+  const user = await getCurrentUser();
+  if (!user || !canCreateEmployee(user)) {
+    redirect("/hrms/directory?denied=create");
+  }
+
   const leadersRes = await getHierarchyManagersAction();
   const leaders = leadersRes.success && leadersRes.data ? leadersRes.data : [];
 

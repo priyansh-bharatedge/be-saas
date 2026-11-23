@@ -33,6 +33,7 @@ interface AttendanceReportViewProps {
     clockedOut: number;
     avgWorkingHours: number;
   };
+  isSelfService?: boolean;
 }
 
 const DEPARTMENTS = DEPARTMENT_FILTER_TABS;
@@ -40,6 +41,7 @@ const DEPARTMENTS = DEPARTMENT_FILTER_TABS;
 const STATUS_OPTIONS = [
   { value: "ALL", label: "All Statuses" },
   { value: "ACTIVE", label: "Active Working" },
+  { value: "MEETING_MODE", label: "Meeting Mode" },
   { value: "IDLE", label: "Idle / Paused" },
   { value: "CLOCKED_OUT", label: "Clocked Out" },
 ];
@@ -48,6 +50,7 @@ export default function AttendanceReportView({
   initialRecords,
   initialTotal,
   initialStats,
+  isSelfService = false,
 }: AttendanceReportViewProps) {
   const [records, setRecords] = useState<AttendanceRecordRow[]>(initialRecords);
   const [total, setTotal] = useState(initialTotal);
@@ -175,102 +178,182 @@ export default function AttendanceReportView({
     return `${h}h ${m}m (${hoursDecimal.toFixed(1)} hrs)`;
   };
 
+  const formatDate = (dateStr: string) => {
+    try {
+      const d = new Date(dateStr);
+      return d.toLocaleDateString("en-IN", {
+        day: "2-digit",
+        month: "short",
+        year: "numeric",
+      });
+    } catch {
+      return dateStr;
+    }
+  };
+
   const totalPages = Math.ceil(total / pageSize) || 1;
+
+  // Personal metrics for self-service view
+  const totalPersonalHours = records.reduce((acc, r) => acc + (r.totalActiveHours || 0), 0);
+  const avgPersonalHours = records.length > 0 ? (totalPersonalHours / records.length).toFixed(1) : "0.0";
+  const activeMeetingsCount = records.filter((r) => r.currentStatus === "MEETING_MODE").length;
 
   return (
     <div className="space-y-6">
       {/* 1. Light Glassmorphic Summary Statistic Cards */}
-      <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-5 gap-3.5">
-        {/* Total Staff */}
-        <div className="p-5 rounded-[26px] bg-white/75 backdrop-blur-xl border border-white/80 shadow-[0_8px_30px_rgba(0,0,0,0.02)]">
-          <div className="flex items-center justify-between text-xs font-semibold text-slate-500 mb-1">
-            <span>Total Staff</span>
-            <Layers className="h-4 w-4 text-[#588594]" />
+      {isSelfService ? (
+        <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-4 gap-3.5">
+          {/* Days Logged */}
+          <div className="p-5 rounded-[26px] bg-white/75 backdrop-blur-xl border border-white/80 shadow-[0_8px_30px_rgba(0,0,0,0.02)]">
+            <div className="flex items-center justify-between text-xs font-semibold text-slate-500 mb-1">
+              <span>Days Logged</span>
+              <Layers className="h-4 w-4 text-[#588594]" />
+            </div>
+            <div className="text-2xl sm:text-3xl font-extrabold text-slate-900 tracking-tight">
+              {total}
+            </div>
+            <p className="text-[11px] text-slate-400 mt-1 font-medium">Recorded shift dates</p>
           </div>
-          <div className="text-2xl sm:text-3xl font-extrabold text-slate-900 tracking-tight">
-            {stats.totalEmployees}
-          </div>
-          <p className="text-[11px] text-slate-400 mt-1 font-medium">Configured workforce</p>
-        </div>
 
-        {/* Currently Active (Brand Cyan Accent #ACCAD5) */}
-        <div className="p-5 rounded-[26px] bg-[#EBF3F6]/85 backdrop-blur-xl border border-[#ACCAD5]/60 shadow-[0_8px_30px_rgba(0,0,0,0.02)]">
-          <div className="flex items-center justify-between text-xs font-semibold text-[#3D6472] mb-1">
-            <span>Currently Active</span>
-            <span className="relative flex h-2 w-2">
-              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-[#588594] opacity-75"></span>
-              <span className="relative inline-flex rounded-full h-2 w-2 bg-[#588594]"></span>
-            </span>
+          {/* Total Active Hours */}
+          <div className="p-5 rounded-[26px] bg-[#EBF3F6]/85 backdrop-blur-xl border border-[#ACCAD5]/60 shadow-[0_8px_30px_rgba(0,0,0,0.02)]">
+            <div className="flex items-center justify-between text-xs font-semibold text-[#3D6472] mb-1">
+              <span>Total Active Hours</span>
+              <Clock className="h-4 w-4 text-[#588594]" />
+            </div>
+            <div className="text-2xl sm:text-3xl font-extrabold text-[#274854] tracking-tight">
+              {totalPersonalHours.toFixed(1)}h
+            </div>
+            <p className="text-[11px] text-[#588594] mt-1 font-medium">Net logged working hours</p>
           </div>
-          <div className="text-2xl sm:text-3xl font-extrabold text-[#274854] tracking-tight">
-            {stats.activeNow}
-          </div>
-          <p className="text-[11px] text-[#588594] mt-1 font-medium">Real-time working</p>
-        </div>
 
-        {/* Idle / Paused (Brand Sunset Amber Accent #F0944D) */}
-        <div className="p-5 rounded-[26px] bg-[#FDEFE6]/85 backdrop-blur-xl border border-[#F0944D]/35 shadow-[0_8px_30px_rgba(0,0,0,0.02)]">
-          <div className="flex items-center justify-between text-xs font-semibold text-[#C66318] mb-1">
-            <span>Idle / Paused</span>
-            <Coffee className="h-4 w-4 text-[#F0944D]" />
+          {/* Average Shift Hours */}
+          <div className="p-5 rounded-[26px] bg-white/75 backdrop-blur-xl border border-white/80 shadow-[0_8px_30px_rgba(0,0,0,0.02)]">
+            <div className="flex items-center justify-between text-xs font-semibold text-slate-500 mb-1">
+              <span>Avg Shift Hours</span>
+              <Clock className="h-4 w-4 text-slate-400" />
+            </div>
+            <div className="text-2xl sm:text-3xl font-extrabold text-slate-900 tracking-tight">
+              {avgPersonalHours}h
+            </div>
+            <p className="text-[11px] text-slate-400 mt-1 font-medium">Per logged shift date</p>
           </div>
-          <div className="text-2xl sm:text-3xl font-extrabold text-[#9C4206] tracking-tight">
-            {stats.idleNow}
-          </div>
-          <p className="text-[11px] text-[#C66318] mt-1 font-medium">&gt; 5m inactivity</p>
-        </div>
 
-        {/* Clocked Out / Off */}
-        <div className="p-5 rounded-[26px] bg-white/75 backdrop-blur-xl border border-white/80 shadow-[0_8px_30px_rgba(0,0,0,0.02)]">
-          <div className="flex items-center justify-between text-xs font-semibold text-slate-500 mb-1">
-            <span>Clocked Out / Off</span>
-            <UserX className="h-4 w-4 text-slate-400" />
+          {/* Meeting Mode Sessions */}
+          <div className="p-5 rounded-[26px] bg-emerald-50/85 backdrop-blur-xl border border-emerald-300 shadow-[0_8px_30px_rgba(0,0,0,0.02)]">
+            <div className="flex items-center justify-between text-xs font-semibold text-emerald-800 mb-1">
+              <span>Client Meeting Logs</span>
+              <span className="relative flex h-2 w-2">
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-500 opacity-75"></span>
+                <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-600"></span>
+              </span>
+            </div>
+            <div className="text-2xl sm:text-3xl font-extrabold text-emerald-950 tracking-tight">
+              {activeMeetingsCount}
+            </div>
+            <p className="text-[11px] text-emerald-700 mt-1 font-medium">Meeting Mode records</p>
           </div>
-          <div className="text-2xl sm:text-3xl font-extrabold text-slate-900 tracking-tight">
-            {stats.clockedOut}
-          </div>
-          <p className="text-[11px] text-slate-400 mt-1 font-medium">Shift completed / off</p>
         </div>
+      ) : (
+        <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-5 gap-3.5">
+          {/* Total Staff */}
+          <div className="p-5 rounded-[26px] bg-white/75 backdrop-blur-xl border border-white/80 shadow-[0_8px_30px_rgba(0,0,0,0.02)]">
+            <div className="flex items-center justify-between text-xs font-semibold text-slate-500 mb-1">
+              <span>Total Staff</span>
+              <Layers className="h-4 w-4 text-[#588594]" />
+            </div>
+            <div className="text-2xl sm:text-3xl font-extrabold text-slate-900 tracking-tight">
+              {stats.totalEmployees}
+            </div>
+            <p className="text-[11px] text-slate-400 mt-1 font-medium">Configured workforce</p>
+          </div>
 
-        {/* Avg Working Hours */}
-        <div className="p-5 rounded-[26px] bg-white/75 backdrop-blur-xl border border-white/80 shadow-[0_8px_30px_rgba(0,0,0,0.02)] col-span-2 sm:col-span-1">
-          <div className="flex items-center justify-between text-xs font-semibold text-slate-500 mb-1">
-            <span>Avg Working Hours</span>
-            <Clock className="h-4 w-4 text-[#588594]" />
+          {/* Currently Active (Brand Cyan Accent #ACCAD5) */}
+          <div className="p-5 rounded-[26px] bg-[#EBF3F6]/85 backdrop-blur-xl border border-[#ACCAD5]/60 shadow-[0_8px_30px_rgba(0,0,0,0.02)]">
+            <div className="flex items-center justify-between text-xs font-semibold text-[#3D6472] mb-1">
+              <span>Currently Active</span>
+              <span className="relative flex h-2 w-2">
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-[#588594] opacity-75"></span>
+                <span className="relative inline-flex rounded-full h-2 w-2 bg-[#588594]"></span>
+              </span>
+            </div>
+            <div className="text-2xl sm:text-3xl font-extrabold text-[#274854] tracking-tight">
+              {stats.activeNow}
+            </div>
+            <p className="text-[11px] text-[#588594] mt-1 font-medium">Real-time working</p>
           </div>
-          <div className="text-2xl sm:text-3xl font-extrabold text-slate-900 tracking-tight">
-            {stats.avgWorkingHours}h
+
+          {/* Idle / Paused (Brand Sunset Amber Accent #F0944D) */}
+          <div className="p-5 rounded-[26px] bg-[#FDEFE6]/85 backdrop-blur-xl border border-[#F0944D]/35 shadow-[0_8px_30px_rgba(0,0,0,0.02)]">
+            <div className="flex items-center justify-between text-xs font-semibold text-[#C66318] mb-1">
+              <span>Idle / Paused</span>
+              <Coffee className="h-4 w-4 text-[#F0944D]" />
+            </div>
+            <div className="text-2xl sm:text-3xl font-extrabold text-[#9C4206] tracking-tight">
+              {stats.idleNow}
+            </div>
+            <p className="text-[11px] text-[#C66318] mt-1 font-medium">&gt; 5m inactivity</p>
           </div>
-          <p className="text-[11px] text-slate-400 mt-1 font-medium">Today&apos;s shift average</p>
+
+          {/* Clocked Out / Off */}
+          <div className="p-5 rounded-[26px] bg-white/75 backdrop-blur-xl border border-white/80 shadow-[0_8px_30px_rgba(0,0,0,0.02)]">
+            <div className="flex items-center justify-between text-xs font-semibold text-slate-500 mb-1">
+              <span>Clocked Out / Off</span>
+              <UserX className="h-4 w-4 text-slate-400" />
+            </div>
+            <div className="text-2xl sm:text-3xl font-extrabold text-slate-900 tracking-tight">
+              {stats.clockedOut}
+            </div>
+            <p className="text-[11px] text-slate-400 mt-1 font-medium">Shift completed / off</p>
+          </div>
+
+          {/* Avg Working Hours */}
+          <div className="p-5 rounded-[26px] bg-white/75 backdrop-blur-xl border border-white/80 shadow-[0_8px_30px_rgba(0,0,0,0.02)] col-span-2 sm:col-span-1">
+            <div className="flex items-center justify-between text-xs font-semibold text-slate-500 mb-1">
+              <span>Avg Working Hours</span>
+              <Clock className="h-4 w-4 text-[#588594]" />
+            </div>
+            <div className="text-2xl sm:text-3xl font-extrabold text-slate-900 tracking-tight">
+              {stats.avgWorkingHours}h
+            </div>
+            <p className="text-[11px] text-slate-400 mt-1 font-medium">Today&apos;s shift average</p>
+          </div>
         </div>
-      </div>
+      )}
 
       {/* 2. Main Light Glassmorphic Container matching Reference Aesthetic */}
       <div className="rounded-[36px] bg-white/70 backdrop-blur-2xl border border-white/80 shadow-[0_12px_40px_rgba(0,0,0,0.03)] p-6 sm:p-8">
         {/* Top Controls: Department Filter Pills & Export Report Button */}
         <div className="flex flex-col xl:flex-row xl:items-center justify-between gap-4 mb-6 pb-4 border-b border-slate-100/80">
-          {/* Department Pills */}
-          <div className="flex items-center gap-2 overflow-x-auto pb-1 scrollbar-none">
-            {DEPARTMENTS.map((dept) => {
-              const isActive = selectedDept === dept;
-              return (
-                <button
-                  key={dept}
-                  onClick={() => {
-                    setSelectedDept(dept);
-                    refetchData(1, dept, selectedStatus, search, startDate, endDate);
-                  }}
-                  className={`px-3.5 py-1.5 rounded-full text-xs transition-all cursor-pointer whitespace-nowrap ${
-                    isActive
-                      ? "text-slate-900 font-bold bg-white shadow-2xs border border-slate-200/70"
-                      : "text-slate-500 hover:text-slate-900 font-medium"
-                  }`}
-                >
-                  {dept === "ALL" ? "All Departments" : dept}
-                </button>
-              );
-            })}
-          </div>
+          {/* Department Pills or Self-Service Header */}
+          {!isSelfService ? (
+            <div className="flex items-center gap-2 overflow-x-auto pb-1 scrollbar-none">
+              {DEPARTMENTS.map((dept) => {
+                const isActive = selectedDept === dept;
+                return (
+                  <button
+                    key={dept}
+                    onClick={() => {
+                      setSelectedDept(dept);
+                      refetchData(1, dept, selectedStatus, search, startDate, endDate);
+                    }}
+                    className={`px-3.5 py-1.5 rounded-full text-xs transition-all cursor-pointer whitespace-nowrap ${
+                      isActive
+                        ? "text-slate-900 font-bold bg-white shadow-2xs border border-slate-200/70"
+                        : "text-slate-500 hover:text-slate-900 font-medium"
+                    }`}
+                  >
+                    {dept === "ALL" ? "All Departments" : dept}
+                  </button>
+                );
+              })}
+            </div>
+          ) : (
+            <div>
+              <h3 className="text-sm font-semibold text-slate-900">Personal Daily Attendance Log</h3>
+              <p className="text-xs text-slate-500 mt-0.5">Filter by date range and view your complete shift history.</p>
+            </div>
+          )}
 
           {/* Export Report Button: Styled with BharatEdge Brand Accent (#588594) */}
           <Button
@@ -285,23 +368,25 @@ export default function AttendanceReportView({
 
         {/* Second Row: Search, Date Range Presets, Status Dropdown, Custom Date Picker */}
         <div className="grid grid-cols-1 md:grid-cols-12 gap-3 mb-6 items-center">
-          {/* Search Box */}
-          <div className="md:col-span-4 relative">
-            <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
-            <Input
-              type="text"
-              placeholder="Search staff, ID, designation..."
-              value={search}
-              onChange={(e) => {
-                setSearch(e.target.value);
-                refetchData(1, selectedDept, selectedStatus, e.target.value, startDate, endDate);
-              }}
-              className="pl-10 h-10 rounded-2xl bg-white/80 border-slate-200/80 text-slate-800 placeholder:text-slate-400 text-xs shadow-none focus-visible:ring-1 focus-visible:ring-[#588594]"
-            />
-          </div>
+          {/* Search Box (Only shown for Administration view) */}
+          {!isSelfService && (
+            <div className="md:col-span-4 relative">
+              <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
+              <Input
+                type="text"
+                placeholder="Search staff, ID, designation..."
+                value={search}
+                onChange={(e) => {
+                  setSearch(e.target.value);
+                  refetchData(1, selectedDept, selectedStatus, e.target.value, startDate, endDate);
+                }}
+                className="pl-10 h-10 rounded-2xl bg-white/80 border-slate-200/80 text-slate-800 placeholder:text-slate-400 text-xs shadow-none focus-visible:ring-1 focus-visible:ring-[#588594]"
+              />
+            </div>
+          )}
 
           {/* Date Range Presets */}
-          <div className="md:col-span-4 flex items-center gap-1 bg-[#E7EAEF]/70 p-1 rounded-2xl border border-slate-200/50">
+          <div className={`${isSelfService ? "md:col-span-6" : "md:col-span-4"} flex items-center gap-1 bg-[#E7EAEF]/70 p-1 rounded-2xl border border-slate-200/50`}>
             {(
               [
                 { id: "today", label: "Today" },
@@ -325,7 +410,7 @@ export default function AttendanceReportView({
           </div>
 
           {/* Status Dropdown */}
-          <div className="md:col-span-2">
+          <div className={`${isSelfService ? "md:col-span-3" : "md:col-span-2"}`}>
             <select
               value={selectedStatus}
               onChange={(e) => {
@@ -343,7 +428,7 @@ export default function AttendanceReportView({
           </div>
 
           {/* Custom Date Input */}
-          <div className="md:col-span-2 flex items-center gap-1.5 text-xs text-slate-500">
+          <div className={`${isSelfService ? "md:col-span-3" : "md:col-span-2"} flex items-center gap-1.5 text-xs text-slate-500`}>
             <CalendarIcon className="h-3.5 w-3.5 text-slate-400 shrink-0" />
             <input
               type="date"
@@ -364,14 +449,27 @@ export default function AttendanceReportView({
             {/* Table Header: shaded row matching reference aesthetic */}
             <thead>
               <tr className="bg-[#E7EAEF]/60 rounded-xl text-[11px] font-semibold text-slate-500 uppercase tracking-wider">
-                <th className="py-3.5 pl-4 pr-3 rounded-l-xl">Employee ID</th>
-                <th className="py-3.5 px-3">Staff Name</th>
-                <th className="py-3.5 px-3">Department & Role</th>
-                <th className="py-3.5 px-3">Clock-In Time</th>
-                <th className="py-3.5 px-3">Clock-Out Time</th>
-                <th className="py-3.5 px-3">Total Working Hours</th>
-                <th className="py-3.5 px-3">Real-Time Status</th>
-                <th className="py-3.5 px-3 rounded-r-xl text-right">Actions</th>
+                {isSelfService ? (
+                  <>
+                    <th className="py-3.5 pl-4 pr-3 rounded-l-xl">Date</th>
+                    <th className="py-3.5 px-3">Clock-In Time</th>
+                    <th className="py-3.5 px-3">Clock-Out Time</th>
+                    <th className="py-3.5 px-3">Total Working Hours</th>
+                    <th className="py-3.5 px-3">Tracker Status</th>
+                    <th className="py-3.5 px-3 rounded-r-xl text-right">Actions</th>
+                  </>
+                ) : (
+                  <>
+                    <th className="py-3.5 pl-4 pr-3 rounded-l-xl">Employee ID</th>
+                    <th className="py-3.5 px-3">Staff Name</th>
+                    <th className="py-3.5 px-3">Department & Role</th>
+                    <th className="py-3.5 px-3">Clock-In Time</th>
+                    <th className="py-3.5 px-3">Clock-Out Time</th>
+                    <th className="py-3.5 px-3">Total Working Hours</th>
+                    <th className="py-3.5 px-3">Real-Time Status</th>
+                    <th className="py-3.5 px-3 rounded-r-xl text-right">Actions</th>
+                  </>
+                )}
               </tr>
             </thead>
 
@@ -379,7 +477,7 @@ export default function AttendanceReportView({
             <tbody className="divide-y divide-[#EAEFF4]/70">
               {records.length === 0 ? (
                 <tr>
-                  <td colSpan={8} className="py-12 text-center text-sm text-slate-400">
+                  <td colSpan={isSelfService ? 6 : 8} className="py-12 text-center text-sm text-slate-400">
                     {isPending ? "Filtering records..." : "No attendance logs found for this filter criteria."}
                   </td>
                 </tr>
@@ -392,26 +490,38 @@ export default function AttendanceReportView({
                       key={r.id}
                       className="hover:bg-white/50 transition-colors text-xs text-slate-800"
                     >
-                      {/* Employee ID */}
-                      <td className="py-4 pl-4 pr-3 font-mono font-medium text-slate-500">
-                        {r.employeeId}
-                      </td>
+                      {isSelfService ? (
+                        /* Date for Self Service */
+                        <td className="py-4 pl-4 pr-3 font-medium text-slate-900">
+                          <div className="font-semibold text-slate-900">{formatDate(r.date)}</div>
+                          <div className="text-[11px] text-slate-400 font-mono">
+                            {r.sessionsCount} session{r.sessionsCount === 1 ? "" : "s"}
+                          </div>
+                        </td>
+                      ) : (
+                        <>
+                          {/* Employee ID */}
+                          <td className="py-4 pl-4 pr-3 font-mono font-medium text-slate-500">
+                            {r.employeeId}
+                          </td>
 
-                      {/* Staff Name (no avatar initial circles, matching directory redesign) */}
-                      <td className="py-4 px-3">
-                        <div className="font-semibold text-slate-900">
-                          {r.employeeName}
-                        </div>
-                        <div className="text-[11px] text-slate-400">{r.workEmail}</div>
-                      </td>
+                          {/* Staff Name (no avatar initial circles, matching directory redesign) */}
+                          <td className="py-4 px-3">
+                            <div className="font-semibold text-slate-900">
+                              {r.employeeName}
+                            </div>
+                            <div className="text-[11px] text-slate-400">{r.workEmail}</div>
+                          </td>
 
-                      {/* Department & Role */}
-                      <td className="py-4 px-3">
-                        <div className="text-slate-800 font-medium">
-                          {r.designation}
-                        </div>
-                        <div className="text-[11px] text-slate-400">{r.department}</div>
-                      </td>
+                          {/* Department & Role */}
+                          <td className="py-4 px-3">
+                            <div className="text-slate-800 font-medium">
+                              {r.designation}
+                            </div>
+                            <div className="text-[11px] text-slate-400">{r.department}</div>
+                          </td>
+                        </>
+                      )}
 
                       {/* Clock-In Time */}
                       <td className="py-4 px-3 font-medium text-slate-700">
@@ -450,18 +560,28 @@ export default function AttendanceReportView({
                       <td className="py-4 px-3">
                         {r.currentStatus === "ACTIVE" && (
                           <span className="text-[#10B981] font-semibold flex items-center gap-1.5 text-xs">
+                            <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
                             Active
+                          </span>
+                        )}
+
+                        {r.currentStatus === "MEETING_MODE" && (
+                          <span className="text-emerald-700 font-semibold flex items-center gap-1.5 text-xs">
+                            <span className="h-1.5 w-1.5 rounded-full bg-emerald-600 animate-pulse" />
+                            Meeting Mode
                           </span>
                         )}
 
                         {r.currentStatus === "IDLE" && (
                           <span className="text-[#F0944D] font-semibold flex items-center gap-1.5 text-xs">
+                            <span className="h-1.5 w-1.5 rounded-full bg-amber-500" />
                             Idle (Paused)
                           </span>
                         )}
 
                         {r.currentStatus === "CLOCKED_OUT" && (
                           <span className="text-slate-400 font-medium flex items-center gap-1.5 text-xs">
+                            <span className="h-1.5 w-1.5 rounded-full bg-slate-300" />
                             Clocked Out
                           </span>
                         )}

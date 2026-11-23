@@ -87,6 +87,9 @@ export function Navbar({ user }: NavbarProps) {
     if (pathname.startsWith("/support")) {
       return { parent: "Support", title: "Overview", icon: Compass };
     }
+    if (pathname.startsWith("/chat")) {
+      return { parent: "Team Chat", title: "Internal Messaging", icon: MessageSquare };
+    }
     return { parent: "BharatEdge", title: "Operations", icon: Compass };
   };
 

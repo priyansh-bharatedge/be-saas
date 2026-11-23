@@ -69,6 +69,7 @@ interface EmployeeRecord {
 interface EmployeeListViewProps {
   initialEmployees: EmployeeRecord[];
   totalCount: number;
+  canCreate?: boolean;
 }
 
 const DEPARTMENTS = DEPARTMENT_FILTER_TABS;
@@ -90,7 +91,11 @@ const STATUSES = [
   { label: "Terminated", value: "TERMINATED" },
 ];
 
-export function EmployeeListView({ initialEmployees, totalCount }: EmployeeListViewProps) {
+export function EmployeeListView({
+  initialEmployees,
+  totalCount,
+  canCreate = false,
+}: EmployeeListViewProps) {
   const [employees, setEmployees] = useState<EmployeeRecord[]>(initialEmployees);
   const [search, setSearch] = useState("");
   const [selectedDept, setSelectedDept] = useState("ALL");
@@ -241,14 +246,18 @@ export function EmployeeListView({ initialEmployees, totalCount }: EmployeeListV
 
         {/* Action Row: Create Button + Search & Filters */}
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-5">
-          {/* Create Employee + Pill Button (styled like Create New Order + in reference) */}
-          <Link
-            href="/hrms/directory/new"
-            className="inline-flex items-center gap-1.5 px-4 py-2 rounded-full border border-slate-200/90 bg-white/90 hover:bg-white text-slate-800 text-xs font-medium shadow-2xs hover:shadow-xs transition-all cursor-pointer w-fit"
-          >
-            <span>Create Employee</span>
-            <Plus className="h-3.5 w-3.5 text-slate-500" />
-          </Link>
+          {/* Create Employee + Pill Button (Restricted to HR Admins, HR HOD, Super Admins) */}
+          {canCreate ? (
+            <Link
+              href="/hrms/directory/new"
+              className="inline-flex items-center gap-1.5 px-4 py-2 rounded-full border border-slate-200/90 bg-white/90 hover:bg-white text-slate-800 text-xs font-medium shadow-2xs hover:shadow-xs transition-all cursor-pointer w-fit"
+            >
+              <span>Create Employee</span>
+              <Plus className="h-3.5 w-3.5 text-slate-500" />
+            </Link>
+          ) : (
+            <div />
+          )}
 
           {/* Search & Filters */}
           <div className="flex flex-wrap items-center gap-2.5">

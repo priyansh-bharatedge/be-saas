@@ -4,9 +4,9 @@ import { useEffect, useRef, useState, useCallback } from "react";
 
 export interface UseIdleTrackerOptions {
   /**
-   * Current tracker status: "ACTIVE" | "IDLE" | "CLOCKED_OUT"
+   * Current tracker status: "ACTIVE" | "IDLE" | "CLOCKED_OUT" | "MEETING_MODE"
    */
-  status: "ACTIVE" | "IDLE" | "CLOCKED_OUT";
+  status: "ACTIVE" | "IDLE" | "CLOCKED_OUT" | "MEETING_MODE";
   /**
    * Inactivity threshold in milliseconds (default: 5 minutes = 300,000ms)
    */
@@ -57,8 +57,8 @@ export function useIdleTracker({
 
   // Set up event listeners for mousemove, keydown, scroll, and click
   useEffect(() => {
-    // Only listen if user is clocked in (ACTIVE or IDLE)
-    if (status === "CLOCKED_OUT") {
+    // Only listen if user is in ACTIVE or IDLE status (ignore CLOCKED_OUT and MEETING_MODE)
+    if (status === "CLOCKED_OUT" || status === "MEETING_MODE") {
       setSecondsUntilIdle(Math.round(idleTimeoutMs / 1000));
       return;
     }

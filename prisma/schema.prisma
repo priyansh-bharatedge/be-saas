@@ -93,6 +93,7 @@ enum TrackerStatus {
   ACTIVE
   IDLE
   CLOCKED_OUT
+  MEETING_MODE
 }
 
 enum LeaveType {
@@ -814,6 +815,11 @@ model Employee {
   auditedLogs     AuditLog[]     @relation("AuditedBy")
   notifications   Notification[]
 
+  // Team Chat Relations
+  createdConversations ChatConversation[] @relation("CreatedConversations")
+  chatParticipants     ChatParticipant[]  @relation("EmployeeChatParticipants")
+  sentChatMessages     ChatMessage[]      @relation("SentChatMessages")
+
   // CRM Module Relations
   createdCompanies      Company[]           @relation("CreatedCompanies")
   createdClients        Client[]            @relation("CreatedClients")
@@ -972,3 +978,76 @@ model Notification {
   @@index([isRead])
   @@map("notifications")
 }
+
+// ==========================================
+// TEAM CHAT MODULE (INTERNAL MESSAGING)
+// ==========================================
+
+enum ChatParticipantRole {
+  ADMIN
+  MEMBER
+}
+
+enum ChatMessageType {
+  TEXT
+  IMAGE
+  DOCUMENT
+  FILE
+}
+
+model ChatConversation {
+  id          String            @id @default(uuid())
+  isGroup     Boolean           @default(false)
+  name        String?
+  avatarUrl   String?
+  createdById String
+  createdBy   Employee          @relation("CreatedConversations", fields: [createdById], references: [id], onDelete: Cascade)
+  
+  participants ChatParticipant[]
+  messages     ChatMessage[]
+
+  createdAt   DateTime          @default(now())
+  updatedAt   DateTime          @updatedAt
+
+  @@index([createdById])
+  @@map("chat_conversations")
+}
+
+model ChatParticipant {
+  id             String              @id @default(uuid())
+  conversationId String
+  conversation   ChatConversation    @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  employeeId     String
+  employee       Employee            @relation("EmployeeChatParticipants", fields: [employeeId], references: [id], onDelete: Cascade)
+  role           ChatParticipantRole @default(MEMBER)
+  lastReadAt     DateTime?
+  joinedAt       DateTime            @default(now())
+
+  @@unique([conversationId, employeeId])
+  @@index([employeeId])
+  @@index([conversationId])
+  @@map("chat_participants")
+}
+
+model ChatMessage {
+  id                 String           @id @default(uuid())
+  conversationId     String
+  conversation       ChatConversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  senderId           String
+  sender             Employee         @relation("SentChatMessages", fields: [senderId], references: [id], onDelete: Cascade)
+  content            String?          @db.Text
+  messageType        ChatMessageType  @default(TEXT)
+  attachmentUrl      String?
+  attachmentName     String?
+  attachmentSize     Int?
+  attachmentMimeType String?
+  isDeleted          Boolean          @default(false)
+
+  createdAt          DateTime         @default(now())
+
+  @@index([conversationId])
+  @@index([senderId])
+  @@index([createdAt])
+  @@map("chat_messages")
+}
+

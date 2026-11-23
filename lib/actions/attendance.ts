@@ -4,7 +4,8 @@ import { revalidatePath } from "next/cache";
 import { db } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth/session";
 import { getScopeFilter } from "@/lib/auth/rbac";
-import { TrackerStatus, Role } from "@prisma/client";
+import { TrackerStatus, Role, NotificationType } from "@prisma/client";
+import { createNotification, notifyHRAdmins } from "@/lib/actions/notifications";
 
 export interface ActionResult<T = unknown> {
   success: boolean;
@@ -16,7 +17,7 @@ export interface SessionData {
   id: string;
   startTime: string;
   endTime: string | null;
-  status: "ACTIVE" | "IDLE" | "CLOCKED_OUT";
+  status: "ACTIVE" | "IDLE" | "CLOCKED_OUT" | "MEETING_MODE";
   durationMinutes: number | null;
 }
 
@@ -28,7 +29,7 @@ export interface TodayAttendanceState {
   date: string;
   clockInTime: string | null;
   clockOutTime: string | null;
-  currentStatus: "ACTIVE" | "IDLE" | "CLOCKED_OUT";
+  currentStatus: "ACTIVE" | "IDLE" | "CLOCKED_OUT" | "MEETING_MODE";
   totalActiveHours: number;
   totalActiveSeconds: number;
   sessions: SessionData[];
@@ -90,7 +91,7 @@ function calculateTotalActiveMinutes(
   const now = new Date();
 
   for (const session of sessions) {
-    if (session.status === TrackerStatus.ACTIVE) {
+    if (session.status === TrackerStatus.ACTIVE || session.status === TrackerStatus.MEETING_MODE) {
       const end = session.endTime || now;
       const diffMs = Math.max(0, end.getTime() - session.startTime.getTime());
       totalMinutes += diffMs / (1000 * 60);
@@ -164,14 +165,14 @@ export async function getTodayAttendanceAction(
         date: attendance.date.toISOString(),
         clockInTime: attendance.clockInTime ? attendance.clockInTime.toISOString() : null,
         clockOutTime: attendance.clockOutTime ? attendance.clockOutTime.toISOString() : null,
-        currentStatus: attendance.currentStatus as "ACTIVE" | "IDLE" | "CLOCKED_OUT",
+        currentStatus: attendance.currentStatus as "ACTIVE" | "IDLE" | "CLOCKED_OUT" | "MEETING_MODE",
         totalActiveHours,
         totalActiveSeconds,
         sessions: attendance.sessions.map((s) => ({
           id: s.id,
           startTime: s.startTime.toISOString(),
           endTime: s.endTime ? s.endTime.toISOString() : null,
-          status: s.status as "ACTIVE" | "IDLE" | "CLOCKED_OUT",
+          status: s.status as "ACTIVE" | "IDLE" | "CLOCKED_OUT" | "MEETING_MODE",
           durationMinutes: s.durationMinutes != null ? Number(s.durationMinutes) : null,
         })),
         lastSessionStartTime: openSession ? openSession.startTime.toISOString() : null,
@@ -300,6 +301,35 @@ export async function clockOutAction(
       return { success: false, error: "No active attendance record found for today." };
     }
 
+    // If currently in MEETING_MODE, automatically finalize meeting mode first
+    if (attendance.currentStatus === TrackerStatus.MEETING_MODE) {
+      const meetingSession = attendance.sessions.find(
+        (s) => s.status === TrackerStatus.MEETING_MODE && s.endTime === null
+      );
+      const meetingDurationMin = meetingSession
+        ? Math.max(1, Math.round((now.getTime() - meetingSession.startTime.getTime()) / (1000 * 60)))
+        : 0;
+      const timeStr = now.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+      const empName = `${employee.firstName} ${employee.lastName}`;
+      const durationText = meetingDurationMin > 0 ? `${meetingDurationMin} min` : "< 1 min";
+
+      await notifyHRAdmins({
+        title: "Meeting Mode Completed (Shift Closed)",
+        message: `${empName} clocked out and completed meeting at ${timeStr} (Duration: ${durationText}).`,
+        actionUrl: "/hrms/attendance",
+      });
+
+      if (employee.teamLeaderId) {
+        await createNotification({
+          recipientUserId: employee.teamLeaderId,
+          title: "Team Member Meeting Finished",
+          message: `${empName} completed meeting upon clock-out at ${timeStr} (Duration: ${durationText}).`,
+          actionUrl: "/hrms/attendance",
+          type: NotificationType.INFO,
+        });
+      }
+    }
+
     // Close any open session and compute duration
     const openSessions = attendance.sessions.filter((s) => s.endTime === null);
     for (const openSession of openSessions) {
@@ -381,6 +411,11 @@ export async function updateTrackerStatusAction(
       return { success: false, error: "Cannot toggle tracker status while clocked out." };
     }
 
+    // If currently in MEETING_MODE, explicitly bypass idle pause so meeting hours continue uninterrupted
+    if (attendance.currentStatus === TrackerStatus.MEETING_MODE) {
+      return await getTodayAttendanceAction(employee.id);
+    }
+
     // If already in target status, return current state
     if (attendance.currentStatus === (newStatus as TrackerStatus)) {
       return await getTodayAttendanceAction(employee.id);
@@ -439,6 +474,216 @@ export async function updateTrackerStatusAction(
   }
 }
 
+/**
+ * Starts Meeting Mode for the employee (bypasses 5m idle auto-pause and notifies HR Admins + Team Leader)
+ */
+export async function startMeetingModeAction(
+  employeeId?: string
+): Promise<ActionResult<TodayAttendanceState>> {
+  try {
+    const employee = await resolveEmployee(employeeId);
+    if (!employee) {
+      return { success: false, error: "Employee record not found." };
+    }
+
+    const todayDate = getNormalizedDate();
+    const now = new Date();
+
+    const attendance = await db.attendance.findUnique({
+      where: {
+        employeeId_date: {
+          employeeId: employee.id,
+          date: todayDate,
+        },
+      },
+      include: { sessions: true },
+    });
+
+    if (!attendance || attendance.currentStatus === TrackerStatus.CLOCKED_OUT) {
+      return {
+        success: false,
+        error: "Cannot enable Meeting Mode while clocked out. Please clock in first.",
+      };
+    }
+
+    if (attendance.currentStatus === TrackerStatus.MEETING_MODE) {
+      return await getTodayAttendanceAction(employee.id);
+    }
+
+    // Close any previous open session
+    const openSessions = attendance.sessions.filter((s) => s.endTime === null);
+    for (const openSession of openSessions) {
+      const durationMin = Math.max(
+        0,
+        (now.getTime() - openSession.startTime.getTime()) / (1000 * 60)
+      );
+      await db.attendanceSession.update({
+        where: { id: openSession.id },
+        data: {
+          endTime: now,
+          durationMinutes: Number(durationMin.toFixed(2)),
+        },
+      });
+    }
+
+    // Start a new session with MEETING_MODE
+    await db.attendanceSession.create({
+      data: {
+        attendanceId: attendance.id,
+        startTime: now,
+        status: TrackerStatus.MEETING_MODE,
+      },
+    });
+
+    // Update attendance record status
+    await db.attendance.update({
+      where: { id: attendance.id },
+      data: {
+        currentStatus: TrackerStatus.MEETING_MODE,
+      },
+    });
+
+    // Targeted notifications
+    const timeStr = now.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+    const empName = `${employee.firstName} ${employee.lastName}`;
+
+    await notifyHRAdmins({
+      title: "Meeting Mode Enabled",
+      message: `${empName} (${employee.department}) enabled Meeting Mode for a client meeting at ${timeStr}.`,
+      actionUrl: "/hrms/attendance",
+    });
+
+    if (employee.teamLeaderId) {
+      await createNotification({
+        recipientUserId: employee.teamLeaderId,
+        title: "Team Member In Client Meeting",
+        message: `${empName} has enabled Meeting Mode at ${timeStr}.`,
+        actionUrl: "/hrms/attendance",
+        type: NotificationType.INFO,
+      });
+    }
+
+    revalidatePath("/hrms");
+    revalidatePath("/hrms/attendance");
+
+    return await getTodayAttendanceAction(employee.id);
+  } catch (error) {
+    console.error("Error starting meeting mode:", error);
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : "Failed to start meeting mode.",
+    };
+  }
+}
+
+/**
+ * Stops Meeting Mode for the employee, closes the meeting session with recorded duration, resumes ACTIVE session, and notifies HR/TL
+ */
+export async function stopMeetingModeAction(
+  employeeId?: string
+): Promise<ActionResult<TodayAttendanceState>> {
+  try {
+    const employee = await resolveEmployee(employeeId);
+    if (!employee) {
+      return { success: false, error: "Employee record not found." };
+    }
+
+    const todayDate = getNormalizedDate();
+    const now = new Date();
+
+    const attendance = await db.attendance.findUnique({
+      where: {
+        employeeId_date: {
+          employeeId: employee.id,
+          date: todayDate,
+        },
+      },
+      include: { sessions: true },
+    });
+
+    if (!attendance || attendance.currentStatus === TrackerStatus.CLOCKED_OUT) {
+      return { success: false, error: "Cannot stop Meeting Mode while clocked out." };
+    }
+
+    let meetingDurationMin = 0;
+
+    // Close open session(s)
+    const openSessions = attendance.sessions.filter((s) => s.endTime === null);
+    for (const openSession of openSessions) {
+      const durationMin = Math.max(
+        0,
+        (now.getTime() - openSession.startTime.getTime()) / (1000 * 60)
+      );
+      if (openSession.status === TrackerStatus.MEETING_MODE) {
+        meetingDurationMin = Math.round(durationMin);
+      }
+      await db.attendanceSession.update({
+        where: { id: openSession.id },
+        data: {
+          endTime: now,
+          durationMinutes: Number(durationMin.toFixed(2)),
+        },
+      });
+    }
+
+    // Start a new ACTIVE session
+    await db.attendanceSession.create({
+      data: {
+        attendanceId: attendance.id,
+        startTime: now,
+        status: TrackerStatus.ACTIVE,
+      },
+    });
+
+    // Recalculate total active hours
+    const allSessions = await db.attendanceSession.findMany({
+      where: { attendanceId: attendance.id },
+    });
+    const totalActiveMinutes = calculateTotalActiveMinutes(allSessions);
+    const totalActiveHours = Number((totalActiveMinutes / 60).toFixed(2));
+
+    await db.attendance.update({
+      where: { id: attendance.id },
+      data: {
+        currentStatus: TrackerStatus.ACTIVE,
+        totalActiveHours,
+      },
+    });
+
+    // Targeted notifications
+    const timeStr = now.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+    const empName = `${employee.firstName} ${employee.lastName}`;
+    const durationText = meetingDurationMin > 0 ? `${meetingDurationMin} min` : "< 1 min";
+
+    await notifyHRAdmins({
+      title: "Meeting Mode Completed",
+      message: `${empName} completed meeting and disabled Meeting Mode at ${timeStr} (Duration: ${durationText}).`,
+      actionUrl: "/hrms/attendance",
+    });
+
+    if (employee.teamLeaderId) {
+      await createNotification({
+        recipientUserId: employee.teamLeaderId,
+        title: "Team Member Meeting Finished",
+        message: `${empName} completed meeting at ${timeStr} (Duration: ${durationText}).`,
+        actionUrl: "/hrms/attendance",
+        type: NotificationType.INFO,
+      });
+    }
+
+    revalidatePath("/hrms");
+    revalidatePath("/hrms/attendance");
+
+    return await getTodayAttendanceAction(employee.id);
+  } catch (error) {
+    console.error("Error stopping meeting mode:", error);
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : "Failed to stop meeting mode.",
+    };
+  }
+}
+
 export interface AttendanceReportFilterParams {
   startDate?: string;
   endDate?: string;
@@ -461,7 +706,7 @@ export interface AttendanceRecordRow {
   clockInTime: string | null;
   clockOutTime: string | null;
   totalActiveHours: number;
-  currentStatus: "ACTIVE" | "IDLE" | "CLOCKED_OUT";
+  currentStatus: "ACTIVE" | "IDLE" | "CLOCKED_OUT" | "MEETING_MODE";
   sessionsCount: number;
 }
 

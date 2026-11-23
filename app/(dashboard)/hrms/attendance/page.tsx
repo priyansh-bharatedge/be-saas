@@ -8,9 +8,6 @@ import {
   getAttendanceReportAction,
 } from "@/lib/actions/attendance";
 import PageTransition from "@/components/animations/PageTransition";
-import { ShieldAlert } from "lucide-react";
-import Link from "next/link";
-import { Button } from "@/components/ui/button";
 
 export const dynamic = "force-dynamic";
 
@@ -27,23 +24,31 @@ export default async function HRMSAttendancePage() {
     redirect("/login");
   }
 
-  // RBAC Permission Check
-  const hasAccess = user.role === Role.Admin || user.role === Role.HRMS;
+  // Check whether user has organizational HR admin access or self-service access
+  const isHrAdmin =
+    user.role === Role.Admin ||
+    user.role === Role.HRMS ||
+    user.systemRole === "SUPER_ADMIN" ||
+    user.systemRole === "HR_ADMIN" ||
+    (user.systemRole === "ADMIN_HOD" && (user.department || "").toLowerCase().includes("hr"));
 
   // Fetch today's personal attendance state for the user's widget
   const todayAttendanceRes = await getTodayAttendanceAction();
   const initialClockData = todayAttendanceRes.success ? todayAttendanceRes.data : null;
 
-  // If authorized, fetch initial day-wise administration attendance report
-  const todayStr = new Date().toISOString().split("T")[0];
-  const reportRes = hasAccess
-    ? await getAttendanceReportAction({
-        startDate: todayStr,
-        endDate: todayStr,
-        page: 1,
-        pageSize: 10,
-      })
-    : null;
+  // Fetch initial report:
+  // For HR Admin: default to today (organization-wide)
+  // For Self-Service: default to 30-day window so employee sees their recent daily attendance history
+  const now = new Date();
+  const todayStr = now.toISOString().split("T")[0];
+  const thirtyDaysAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000).toISOString().split("T")[0];
+
+  const reportRes = await getAttendanceReportAction({
+    startDate: isHrAdmin ? todayStr : thirtyDaysAgo,
+    endDate: todayStr,
+    page: 1,
+    pageSize: 10,
+  });
 
   const initialRecords = reportRes?.success && reportRes.data ? reportRes.data.records : [];
   const initialTotal = reportRes?.success && reportRes.data ? reportRes.data.total : 0;
@@ -67,7 +72,7 @@ export default async function HRMSAttendancePage() {
               Time & Attendance Tracking
             </h1>
             <p className="text-xs text-slate-500 mt-1 font-medium">
-              Active shift punch card, 5-minute automated idle pause, and HR administration records.
+              Active shift punch card, 5-minute automated idle pause, and employee attendance records.
             </p>
           </div>
           <div className="flex items-center gap-2">
@@ -80,40 +85,25 @@ export default async function HRMSAttendancePage() {
         {/* 1. Employee Dashboard Clock-In/Out Widget */}
         <ClockWidget initialData={initialClockData} />
 
-        {/* 2. HRMS Attendance Administration View */}
-        {hasAccess ? (
-          <div>
-            <div className="mb-4">
-              <h2 className="text-lg font-bold text-slate-900">
-                Staff Attendance Administration
-              </h2>
-              <p className="text-xs text-slate-500 font-medium">
-                Real-time staff punch logs, shift intervals, idle analytics, and CSV report export.
-              </p>
-            </div>
-            <AttendanceReportView
-              initialRecords={initialRecords}
-              initialTotal={initialTotal}
-              initialStats={initialStats}
-            />
-          </div>
-        ) : (
-          <div className="p-8 rounded-[32px] bg-white/75 backdrop-blur-xl border border-amber-200 text-center space-y-3">
-            <ShieldAlert className="h-10 w-10 text-amber-500 mx-auto" />
-            <h3 className="text-base font-semibold text-slate-900">
-              Administrative Access Restricted
-            </h3>
-            <p className="text-xs text-slate-500 max-w-md mx-auto">
-              Your account ({user.email} - {user.role}) has permission to use the Personal Time
-              Tracker above, but viewing company-wide attendance logs requires Admin or HRMS role.
+        {/* 2. Attendance View: Organization Administration for HR Admins, Personal Self-Service History for Staff */}
+        <div>
+          <div className="mb-4">
+            <h2 className="text-lg font-bold text-slate-900">
+              {isHrAdmin ? "Staff Attendance Administration" : "Daily Attendance History"}
+            </h2>
+            <p className="text-xs text-slate-500 font-medium">
+              {isHrAdmin
+                ? "Real-time staff punch logs, shift intervals, idle analytics, and CSV report export."
+                : "Your daily punch card records, shift duration logs, meeting mode sessions, and working hours."}
             </p>
-            <Link href="/portal">
-              <Button variant="outline" size="sm" className="mt-2 text-xs">
-                Back to Central Portal
-              </Button>
-            </Link>
           </div>
-        )}
+          <AttendanceReportView
+            initialRecords={initialRecords}
+            initialTotal={initialTotal}
+            initialStats={initialStats}
+            isSelfService={!isHrAdmin}
+          />
+        </div>
       </div>
     </PageTransition>
   );

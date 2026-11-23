@@ -11,6 +11,8 @@ import {
   History,
   Timer,
   Zap,
+  Briefcase,
+  Users,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useIdleTracker } from "@/hooks/useIdleTracker";
@@ -20,6 +22,8 @@ import {
   clockInAction,
   clockOutAction,
   updateTrackerStatusAction,
+  startMeetingModeAction,
+  stopMeetingModeAction,
 } from "@/lib/actions/attendance";
 
 interface ClockWidgetProps {
@@ -63,9 +67,9 @@ export default function ClockWidget({
 
   const currentStatus = data?.currentStatus || "CLOCKED_OUT";
 
-  // Real-time ticking counter (every 1 second when ACTIVE)
+  // Real-time ticking counter (every 1 second when ACTIVE or MEETING_MODE)
   useEffect(() => {
-    if (currentStatus !== "ACTIVE") return;
+    if (currentStatus !== "ACTIVE" && currentStatus !== "MEETING_MODE") return;
 
     const interval = setInterval(() => {
       setLiveActiveSeconds((prev) => prev + 1);
@@ -93,6 +97,27 @@ export default function ClockWidget({
 
     startTransition(async () => {
       const res = await updateTrackerStatusAction(data.employeeId, "ACTIVE");
+      if (res.success && res.data) {
+        setData(res.data);
+        setLiveActiveSeconds(res.data.totalActiveSeconds);
+      }
+    });
+  };
+
+  // Handle Meeting Mode toggles
+  const handleStartMeetingMode = () => {
+    startTransition(async () => {
+      const res = await startMeetingModeAction(data?.employeeId || employeeId);
+      if (res.success && res.data) {
+        setData(res.data);
+        setLiveActiveSeconds(res.data.totalActiveSeconds);
+      }
+    });
+  };
+
+  const handleStopMeetingMode = () => {
+    startTransition(async () => {
+      const res = await stopMeetingModeAction(data?.employeeId || employeeId);
       if (res.success && res.data) {
         setData(res.data);
         setLiveActiveSeconds(res.data.totalActiveSeconds);
@@ -159,6 +184,8 @@ export default function ClockWidget({
         className={`absolute -right-24 -top-24 h-64 w-64 rounded-full blur-3xl pointer-events-none transition-colors duration-700 ${
           currentStatus === "ACTIVE"
             ? "bg-[#ACCAD5]/25"
+            : currentStatus === "MEETING_MODE"
+            ? "bg-emerald-500/20"
             : currentStatus === "IDLE"
             ? "bg-[#F0944D]/20"
             : "bg-[#ACCAD5]/15"
@@ -201,6 +228,22 @@ export default function ClockWidget({
                 <span className="relative inline-flex rounded-full h-2 w-2 bg-[#588594]"></span>
               </span>
               ACTIVE SESSION
+            </motion.div>
+          )}
+
+          {currentStatus === "MEETING_MODE" && (
+            <motion.div
+              key="meeting-pill"
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.95 }}
+              className="flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-emerald-50 border border-emerald-300 text-emerald-800 text-xs font-semibold shadow-2xs"
+            >
+              <span className="relative flex h-2 w-2">
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-500 opacity-75"></span>
+                <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-600"></span>
+              </span>
+              IN CLIENT MEETING
             </motion.div>
           )}
 
@@ -273,7 +316,7 @@ export default function ClockWidget({
             </Button>
           ) : (
             <>
-              {currentStatus === "IDLE" ? (
+              {currentStatus === "IDLE" && (
                 <Button
                   onClick={handleAutoResume}
                   disabled={isPending}
@@ -282,7 +325,32 @@ export default function ClockWidget({
                   <Zap className="h-4 w-4 fill-white" />
                   Resume Active Session
                 </Button>
+              )}
+
+              {/* Prominent Meeting Mode Toggle Button */}
+              {currentStatus === "MEETING_MODE" ? (
+                <Button
+                  onClick={handleStopMeetingMode}
+                  disabled={isPending}
+                  className="bg-emerald-600 hover:bg-emerald-700 text-white shadow-md shadow-emerald-600/25 font-semibold px-5 py-5 rounded-2xl flex items-center justify-center gap-2 text-xs transition-all hover:scale-[1.02] active:scale-[0.98]"
+                >
+                  <Briefcase className="h-4 w-4 fill-white text-white" />
+                  {isPending ? "Ending Meeting..." : "End Meeting Mode"}
+                </Button>
               ) : (
+                <Button
+                  onClick={handleStartMeetingMode}
+                  disabled={isPending}
+                  variant="outline"
+                  title="Enable Meeting Mode during physical client meetings to bypass 5m idle pause"
+                  className="border border-emerald-300 bg-emerald-50/90 hover:bg-emerald-100/90 text-emerald-800 font-semibold text-xs px-4 py-5 rounded-2xl flex items-center gap-1.5 transition-all shadow-2xs"
+                >
+                  <Users className="h-4 w-4 text-emerald-700" />
+                  {isPending ? "Starting..." : "Meeting Mode"}
+                </Button>
+              )}
+
+              {currentStatus === "ACTIVE" && (
                 <Button
                   onClick={simulateIdle}
                   variant="outline"
@@ -307,6 +375,39 @@ export default function ClockWidget({
           )}
         </div>
       </div>
+
+      {/* Dynamic Meeting Mode Notice Banner */}
+      <AnimatePresence>
+        {currentStatus === "MEETING_MODE" && (
+          <motion.div
+            initial={{ opacity: 0, height: 0, y: -10 }}
+            animate={{ opacity: 1, height: "auto", y: 0 }}
+            exit={{ opacity: 0, height: 0, y: -10 }}
+            className="mb-4 overflow-hidden"
+          >
+            <div className="p-4 rounded-2xl bg-emerald-50/95 border border-emerald-300 flex items-center justify-between text-emerald-900 text-xs shadow-xs">
+              <div className="flex items-center gap-2.5">
+                <Briefcase className="h-4 w-4 text-emerald-600 shrink-0" />
+                <div>
+                  <strong className="text-emerald-950 font-semibold">Meeting Mode Active:</strong> In physical client meeting. The 5-minute idle pause is bypassed and working hours continue uninterrupted.
+                  <div className="text-[11px] text-emerald-700 mt-0.5">
+                    HR Admins and your assigned Team Leader have been notified.
+                  </div>
+                </div>
+              </div>
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={handleStopMeetingMode}
+                disabled={isPending}
+                className="border-emerald-300 bg-white hover:bg-emerald-50 text-emerald-800 font-semibold text-xs shrink-0 rounded-xl"
+              >
+                End Meeting
+              </Button>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* Dynamic Idle Notice Banner (Shows when status is IDLE) */}
       <AnimatePresence>
@@ -392,11 +493,17 @@ export default function ClockWidget({
                         className={`h-2 w-2 rounded-full ${
                           sess.status === "ACTIVE"
                             ? "bg-[#588594]"
+                            : sess.status === "MEETING_MODE"
+                            ? "bg-emerald-500"
                             : "bg-[#F0944D]"
                         }`}
                       />
                       <span className="font-semibold text-slate-800">
-                        {sess.status === "ACTIVE" ? "Active Working" : "Idle Break"}
+                        {sess.status === "ACTIVE"
+                          ? "Active Working"
+                          : sess.status === "MEETING_MODE"
+                          ? "Client Meeting"
+                          : "Idle Break"}
                       </span>
                       <span className="text-slate-400 text-[11px]">
                         {formatTimeStr(sess.startTime)} -{" "}

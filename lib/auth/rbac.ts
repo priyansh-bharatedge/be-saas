@@ -4,7 +4,7 @@ import { AuthUser } from "@/lib/auth/session";
 
 export { DEPARTMENTS, type Department, isValidDepartment } from "@/lib/constants/departments";
 
-export type ModuleCode = "crm" | "hrms" | "support";
+export type ModuleCode = "crm" | "hrms" | "support" | "chat";
 
 export type Permission =
   | "admin:full_access"
@@ -522,6 +522,7 @@ export function canAccessModule(
     if (module === "crm") return role === Role.CRM;
     if (module === "hrms") return role === Role.HRMS;
     if (module === "support") return role === Role.Support;
+    if (module === "chat") return true;
     return false;
   }
 
@@ -530,8 +531,13 @@ export function canAccessModule(
   const systemRole = user.systemRole;
   const dept = (user.department || "").toLowerCase();
 
-  // Super Admin has unrestricted access to all 3 products
+  // Super Admin has unrestricted access to all products
   if (role === Role.Admin || systemRole === SystemRole.SUPER_ADMIN) {
+    return true;
+  }
+
+  // Team Chat is accessible to all authenticated company employees
+  if (module === "chat" || module.startsWith("/chat")) {
     return true;
   }
 
@@ -563,6 +569,32 @@ export function canAccessModule(
   }
 
   return false;
+}
+
+/**
+ * Checks whether the user is permitted to onboard / create new employees.
+ * Strictly restricted to:
+ * - Super Admin (Role.Admin or SystemRole.SUPER_ADMIN)
+ * - HR Admin (SystemRole.HR_ADMIN)
+ * - HR Department HOD (SystemRole.ADMIN_HOD in "HR" department)
+ * Strictly BLOCKED for all other roles and departments (Sales HOD, Ops HOD, Accounts HOD, TLs, TMs, etc.)
+ */
+export function canCreateEmployee(user: AuthUser | null): boolean {
+  if (!user || !user.id) return false;
+
+  const isSuperAdmin =
+    user.role === Role.Admin || user.systemRole === SystemRole.SUPER_ADMIN;
+  if (isSuperAdmin) return true;
+
+  const isHrAdmin = user.systemRole === SystemRole.HR_ADMIN;
+  if (isHrAdmin) return true;
+
+  const dept = (user.department || "").trim().toLowerCase();
+  const isHrHod =
+    user.systemRole === SystemRole.ADMIN_HOD &&
+    (dept === "hr" || dept === "human resources" || dept.includes("hr"));
+
+  return Boolean(isHrHod);
 }
 
 /**
@@ -634,5 +666,14 @@ export const MODULE_GATEWAYS: Record<ModuleCode, ModuleGatewayConfig> = {
     href: "/support",
     requiredRole: "Quality Dept & Employee Requests",
     accentColor: "#C66318", // Dark orange / amber
+  },
+  chat: {
+    code: "chat",
+    title: "Team Chat & Collaboration",
+    tagline: "Real-time 1-on-1 Direct Messaging & Departmental Groups",
+    badge: "INTERNAL COLLAB",
+    href: "/chat",
+    requiredRole: "All Employees (Enterprise Wide)",
+    accentColor: "#588594",
   },
 };

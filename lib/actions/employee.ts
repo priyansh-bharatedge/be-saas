@@ -5,7 +5,7 @@ import { db } from "@/lib/db";
 import { employeeFormSchema, EmployeeFormData } from "@/lib/validations/employee";
 import { EmployeeStatus, Language, SalaryEntity, SystemRole, Role, NotificationType, ApprovalStatus, TrackerStatus } from "@prisma/client";
 import { getCurrentUser } from "@/lib/auth/session";
-import { getScopeFilter } from "@/lib/auth/rbac";
+import { getScopeFilter, canCreateEmployee } from "@/lib/auth/rbac";
 import { createNotification, notifyHRAdmins } from "@/lib/actions/notifications";
 import bcrypt from "bcryptjs";
 
@@ -25,11 +25,10 @@ export async function createEmployeeAction(
     const user = await getCurrentUser();
     if (!user) return { success: false, error: "Unauthorized. Please log in." };
 
-    const scope = await getScopeFilter(user, "hrms");
-    if (!scope.canManageAll && !scope.isHrAdmin) {
+    if (!canCreateEmployee(user)) {
       return {
         success: false,
-        error: "Access Denied: Only HR Administrators or Super Admins can onboard new staff.",
+        error: "Access Denied: Only HR Administrators, HR HOD, or Super Admins can onboard new staff.",
       };
     }
 

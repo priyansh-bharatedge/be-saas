@@ -90,6 +90,7 @@ export function Sidebar({ user }: SidebarProps) {
   const isCRM = pathname.startsWith("/crm");
   const isHRMS = pathname.startsWith("/hrms");
   const isSupport = pathname.startsWith("/support");
+  const isChat = pathname.startsWith("/chat");
 
   // Determine user permissions and department
   const userDept = (user?.department || "").toLowerCase();
@@ -249,6 +250,38 @@ export function Sidebar({ user }: SidebarProps) {
       ];
     }
 
+    if (isChat) {
+      const chatSettings: NavItem[] = [];
+      if (isSuperAdmin) {
+        chatSettings.push({ title: "Super Admin HQ", href: "/admin", icon: ShieldCheck });
+      }
+      chatSettings.push(
+        { title: "Central Hub", href: "/portal", icon: LayoutGrid },
+        { title: "Settings", href: "/portal", icon: Settings }
+      );
+
+      return [
+        {
+          section: "Team Messaging",
+          items: [
+            { title: "Conversations", href: "/chat", icon: MessageSquare },
+          ],
+        },
+        {
+          section: "Enterprise Modules",
+          items: [
+            { title: "CRM Suite", href: "/crm", icon: Briefcase },
+            { title: "HRMS Portal", href: "/hrms", icon: Users },
+            { title: "Support Desk", href: "/support", icon: MessageSquare },
+          ],
+        },
+        {
+          section: "Settings and access",
+          items: chatSettings,
+        },
+      ];
+    }
+
     // Default / Global Fallback
     const fallbackMain: NavItem[] = [];
     if (isSuperAdmin) {
@@ -284,6 +317,7 @@ export function Sidebar({ user }: SidebarProps) {
     if (isCRM) return { name: "BharatEdge", sub: "CRM SUITE", badgeColor: "bg-amber-500/10 text-amber-700 border-amber-200" };
     if (isHRMS) return { name: "BharatEdge", sub: "HRMS PORTAL", badgeColor: "bg-sky-500/10 text-sky-700 border-sky-200" };
     if (isSupport) return { name: "BharatEdge", sub: "SUPPORT DESK", badgeColor: "bg-emerald-500/10 text-emerald-700 border-emerald-200" };
+    if (isChat) return { name: "BharatEdge", sub: "TEAM CHAT", badgeColor: "bg-[#ACCAD5]/30 text-[#274854] border-[#ACCAD5]/50" };
     return { name: "BharatEdge", sub: "OPERATING OS", badgeColor: "bg-slate-500/10 text-slate-700 border-slate-200" };
   };
 
