@@ -1,3 +1,4 @@
+import { Suspense } from "react";
 import { redirect } from "next/navigation";
 import { getCurrentUser } from "@/lib/auth/session";
 import { getConversationsAction, searchEmployeesForChatAction } from "@/lib/actions/chat";
@@ -33,11 +34,13 @@ export default async function TeamChatPage() {
         preventing any outer window scrolling so the message composer remains sticky.
       */}
       <div className="h-[calc(100vh-7.5rem)] sm:h-[calc(100vh-8.5rem)] lg:h-[calc(100vh-9.5rem)] w-full flex flex-col overflow-hidden min-h-0">
-        <ChatClient
-          initialConversations={initialConversations}
-          currentUserId={user.id}
-          initialColleagues={initialColleagues}
-        />
+        <Suspense fallback={null}>
+          <ChatClient
+            initialConversations={initialConversations}
+            currentUserId={user.id}
+            initialColleagues={initialColleagues}
+          />
+        </Suspense>
       </div>
     </PageTransition>
   );

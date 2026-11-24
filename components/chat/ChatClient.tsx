@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback, useRef } from "react";
+import { useSearchParams } from "next/navigation";
 import { ConversationSummary, MessageItem } from "@/lib/actions/chat";
 import { ConversationList } from "./ConversationList";
 import { ChatWindow } from "./ChatWindow";
@@ -21,17 +22,38 @@ export function ChatClient({
   initialColleagues,
 }: ChatClientProps) {
   const [conversations, setConversations] = useState<ConversationSummary[]>(initialConversations);
-  // Requirement 2: Default empty state - do not auto-select any conversation on load
-  const [activeId, setActiveId] = useState<string | null>(null);
+  const searchParams = useSearchParams();
+  const urlConvId = searchParams.get("c");
+
+  // Requirement 2: Default empty state - do not auto-select unless directed by URL param (e.g. from top notification click)
+  const [activeId, setActiveId] = useState<string | null>(urlConvId || null);
   const [messages, setMessages] = useState<MessageItem[]>([]);
   const [isLoadingMessages, setIsLoadingMessages] = useState(false);
-  const [showMobileChat, setShowMobileChat] = useState(false);
+  const [showMobileChat, setShowMobileChat] = useState(!!urlConvId);
   const [groupModalOpen, setGroupModalOpen] = useState(false);
   const [infoDrawerOpen, setInfoDrawerOpen] = useState(false);
 
   const activeConversation = conversations.find((c) => c.id === activeId) || null;
   const activeIdRef = useRef<string | null>(activeId);
   activeIdRef.current = activeId;
+
+  // Sync with URL query param ?c=...
+  useEffect(() => {
+    if (urlConvId && urlConvId !== activeId) {
+      setActiveId(urlConvId);
+      setShowMobileChat(true);
+    }
+  }, [urlConvId, activeId]);
+
+  // Dispatch custom event to sync top bar chat icon instantly
+  const dispatchTopBarUnread = useCallback((updatedConvs: ConversationSummary[]) => {
+    if (typeof window !== "undefined") {
+      const total = updatedConvs.reduce((acc, c) => acc + c.unreadCount, 0);
+      window.dispatchEvent(
+        new CustomEvent("chat:unread-updated", { detail: { unreadCount: total } })
+      );
+    }
+  }, []);
 
   // Sound detection refs
   const prevMessageIdsRef = useRef<Set<string>>(new Set());
@@ -90,11 +112,12 @@ export function ChatClient({
         prevTotalUnreadRef.current = totalUnread;
 
         setConversations(updatedList);
+        dispatchTopBarUnread(updatedList);
       }
     } catch (err) {
       console.error("Error fetching conversations:", err);
     }
-  }, []);
+  }, [dispatchTopBarUnread]);
 
   // When activeId changes, load messages and mark as read
   useEffect(() => {
@@ -102,10 +125,12 @@ export function ChatClient({
       initialFetchDoneRef.current = false;
       fetchMessages(activeId, true);
       // Reset unread count locally for active conversation
-      setConversations((prev) =>
-        prev.map((c) => (c.id === activeId ? { ...c, unreadCount: 0 } : c))
-      );
-      // Persist read state in PostgreSQL
+      setConversations((prev) => {
+        const next = prev.map((c) => (c.id === activeId ? { ...c, unreadCount: 0 } : c));
+        dispatchTopBarUnread(next);
+        return next;
+      });
+      // Persist read state in PostgreSQL & clear bell notifications
       fetch("/api/chat/read", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -114,7 +139,7 @@ export function ChatClient({
     } else {
       setMessages([]);
     }
-  }, [activeId, fetchMessages]);
+  }, [activeId, fetchMessages, dispatchTopBarUnread]);
 
   // Live polling ticker (runs every 3.5 seconds)
   useEffect(() => {
@@ -135,9 +160,11 @@ export function ChatClient({
     setActiveId(id);
     setShowMobileChat(true);
     // Immediately clear unread badge in sidebar
-    setConversations((prev) =>
-      prev.map((c) => (c.id === id ? { ...c, unreadCount: 0 } : c))
-    );
+    setConversations((prev) => {
+      const next = prev.map((c) => (c.id === id ? { ...c, unreadCount: 0 } : c));
+      dispatchTopBarUnread(next);
+      return next;
+    });
     // Update DB
     fetch("/api/chat/read", {
       method: "POST",

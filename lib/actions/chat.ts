@@ -579,6 +579,52 @@ export async function sendMessageAction(data: {
 
     const first = message.sender?.firstName || "U";
     const last = message.sender?.lastName || "";
+    const senderFullName = `${first} ${last}`.trim() || "A colleague";
+
+    // Generate notifications for other conversation participants
+    try {
+      const otherParticipants = await db.chatParticipant.findMany({
+        where: {
+          conversationId,
+          employeeId: { not: user.id },
+        },
+        include: {
+          conversation: {
+            select: { isGroup: true, name: true },
+          },
+        },
+      });
+
+      if (otherParticipants.length > 0) {
+        const isGroupConv = otherParticipants[0].conversation.isGroup;
+        const groupTitle = otherParticipants[0].conversation.name || "Group";
+        const notifTitle = isGroupConv
+          ? `${senderFullName} (${groupTitle})`
+          : `New message from ${senderFullName}`;
+
+        const notifSnippet = textContent
+          ? textContent.length > 90
+            ? textContent.slice(0, 87) + "..."
+            : textContent
+          : messageType === "IMAGE"
+          ? "📷 Photo attachment"
+          : messageType === "DOCUMENT"
+          ? "📄 Document attachment"
+          : "📎 File attachment";
+
+        await db.notification.createMany({
+          data: otherParticipants.map((p) => ({
+            recipientId: p.employeeId,
+            title: notifTitle,
+            message: notifSnippet,
+            type: "INFO",
+            actionUrl: `/chat?c=${conversationId}`,
+          })),
+        });
+      }
+    } catch (notifErr) {
+      console.error("Failed to generate chat notifications:", notifErr);
+    }
 
     const formatted: MessageItem = {
       id: message.id,
@@ -738,6 +784,18 @@ export async function markConversationAsReadAction(
       },
     });
 
+    // Also mark any unread notifications for this conversation as read
+    await db.notification.updateMany({
+      where: {
+        recipientId: user.id,
+        actionUrl: { contains: conversationId },
+        isRead: false,
+      },
+      data: {
+        isRead: true,
+      },
+    });
+
     return { success: true, data: true };
   } catch (error) {
     console.error("Error marking conversation as read:", error);
@@ -745,5 +803,47 @@ export async function markConversationAsReadAction(
       success: false,
       error: error instanceof Error ? error.message : "Failed to mark as read.",
     };
+  }
+}
+
+/**
+ * Fast aggregate query returning total unread chat count across all conversations
+ */
+export async function getUnreadChatCountAction(): Promise<
+  ActionResult<{ unreadCount: number }>
+> {
+  try {
+    const user = await getCurrentUser();
+    if (!user) {
+      return { success: false, error: "Unauthorized." };
+    }
+
+    const participants = await db.chatParticipant.findMany({
+      where: { employeeId: user.id },
+      select: { conversationId: true, lastReadAt: true },
+    });
+
+    if (participants.length === 0) {
+      return { success: true, data: { unreadCount: 0 } };
+    }
+
+    const counts = await Promise.all(
+      participants.map((p) =>
+        db.chatMessage.count({
+          where: {
+            conversationId: p.conversationId,
+            isDeleted: false,
+            senderId: { not: user.id },
+            ...(p.lastReadAt ? { createdAt: { gt: p.lastReadAt } } : {}),
+          },
+        })
+      )
+    );
+
+    const totalUnread = counts.reduce((acc, curr) => acc + curr, 0);
+    return { success: true, data: { unreadCount: totalUnread } };
+  } catch (error) {
+    console.error("Error counting unread messages:", error);
+    return { success: false, error: "Failed to count unread messages." };
   }
 }

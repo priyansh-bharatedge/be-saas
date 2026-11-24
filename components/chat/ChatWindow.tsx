@@ -65,29 +65,14 @@ export function ChatWindow({
           <h2 className="text-xl font-bold tracking-tight text-slate-800">
             BharatEdge Team Chat
           </h2>
-          <p className="text-xs text-slate-500 mt-2 leading-relaxed">
-            Send and receive internal real-time messages, departmental announcements, and multi-file attachments.
-          </p>
-
-          {/* Quick Feature Badges */}
-          <div className="flex flex-wrap items-center justify-center gap-2 mt-6">
-            <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-white/90 border border-slate-200/80 text-[11px] font-medium text-slate-600 shadow-2xs">
-              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
-              Live Presence & Delivery Ticks
-            </span>
-            <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-white/90 border border-slate-200/80 text-[11px] font-medium text-slate-600 shadow-2xs">
-              <span className="w-1.5 h-1.5 rounded-full bg-[#588594]" />
-              Multiple File Attachments
-            </span>
-          </div>
 
           {/* Prompt */}
-          <div className="mt-8 p-3 px-4 rounded-2xl bg-white/80 border border-slate-200/60 shadow-xs text-xs text-slate-600">
+          <div className="mt-6 p-3 px-4 rounded-2xl bg-white/80 border border-slate-200/60 shadow-xs text-xs text-slate-600">
             👈 Select a conversation on the left or use the search bar to find a colleague.
           </div>
 
           {/* Encrypted Notice */}
-          <div className="mt-10 flex items-center gap-1.5 text-[10px] text-slate-400 font-medium">
+          <div className="mt-8 flex items-center gap-1.5 text-[10px] text-slate-400 font-medium">
             <Lock className="h-3 w-3 text-slate-400" />
             <span>Encrypted internal corporate network</span>
           </div>

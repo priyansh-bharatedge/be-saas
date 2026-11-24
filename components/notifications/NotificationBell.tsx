@@ -42,9 +42,16 @@ export default function NotificationBell() {
   useEffect(() => {
     loadNotifications();
 
-    // Poll every 30 seconds for live notifications
-    const interval = setInterval(loadNotifications, 30000);
-    return () => clearInterval(interval);
+    // Poll every 8 seconds for responsive live notifications across modules & chat
+    const interval = setInterval(loadNotifications, 8000);
+
+    const onFocus = () => loadNotifications();
+    window.addEventListener("focus", onFocus);
+
+    return () => {
+      clearInterval(interval);
+      window.removeEventListener("focus", onFocus);
+    };
   }, []);
 
   // Close on outside click

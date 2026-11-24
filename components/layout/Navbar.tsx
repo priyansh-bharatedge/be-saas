@@ -17,6 +17,7 @@ import {
 } from "lucide-react";
 import { AuthUser } from "@/lib/auth/session";
 import NotificationBell from "@/components/notifications/NotificationBell";
+import TopBarChatIcon from "@/components/layout/TopBarChatIcon";
 
 interface NavbarProps {
   user?: AuthUser | null;
@@ -119,14 +120,8 @@ export function Navbar({ user }: NavbarProps) {
           <Search className="h-4 w-4" />
         </button>
 
-        {/* Message / Chat Action */}
-        <Link
-          href="/support/tickets"
-          aria-label="Messages"
-          className="p-2 rounded-full text-slate-400 hover:text-slate-700 hover:bg-slate-50 transition-colors"
-        >
-          <MessageSquare className="h-4 w-4" />
-        </Link>
+        {/* Message / Team Chat Action with live unread badge */}
+        <TopBarChatIcon />
 
         {/* Notification Bell with Dropdown */}
         <NotificationBell />
