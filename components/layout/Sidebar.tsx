@@ -112,7 +112,8 @@ export function Sidebar({ user }: SidebarProps) {
         {
           section: "Executive Command",
           items: [
-            { title: "Financial Overview", href: "/admin?tab=overview", icon: TrendingUp },
+            { title: "Dashboard", href: "/admin", icon: LayoutDashboard },
+            { title: "Financial Overview", href: "/admin?tab=financials", icon: TrendingUp },
             { title: "Sales Funnel & BDM", href: "/admin?tab=funnel", icon: Filter },
             { title: "Activity Reports", href: "/admin?tab=activity", icon: Activity },
             { title: "Workforce Attendance", href: "/admin?tab=attendance", icon: Users },
@@ -124,6 +125,7 @@ export function Sidebar({ user }: SidebarProps) {
             { title: "CRM Suite", href: "/crm", icon: Briefcase },
             { title: "HRMS Portal", href: "/hrms", icon: Users },
             { title: "Support Desk", href: "/support", icon: MessageSquare },
+            { title: "Team Chat", href: "/chat", icon: MessageSquare },
           ],
         },
         {
@@ -138,7 +140,12 @@ export function Sidebar({ user }: SidebarProps) {
 
     if (isCRM) {
       const crmItems: NavItem[] = [
-        { title: "Dashboard", href: "/crm", icon: LayoutDashboard, shortcut: "⌘D" },
+        {
+          title: "Dashboard",
+          href: isSuperAdmin ? "/admin" : "/crm",
+          icon: LayoutDashboard,
+          shortcut: "⌘D",
+        },
         { title: "Leads", href: "/crm/leads", icon: UserPlus },
         { title: "Prospects", href: "/crm/prospects", icon: Table2 },
         { title: "Quotations", href: "/crm/quotations", icon: FileText },
@@ -161,14 +168,10 @@ export function Sidebar({ user }: SidebarProps) {
         { title: "Services", href: "/crm/services", icon: Layers }
       );
 
-      const crmSettings: NavItem[] = [];
-      if (isSuperAdmin) {
-        crmSettings.push({ title: "Super Admin HQ", href: "/admin", icon: ShieldCheck });
-      }
-      crmSettings.push(
+      const crmSettings: NavItem[] = [
         { title: "Central Hub", href: "/portal", icon: LayoutGrid },
-        { title: "Settings", href: "/portal", icon: Settings }
-      );
+        { title: "Settings", href: "/portal", icon: Settings },
+      ];
 
       return [
         {
@@ -183,14 +186,22 @@ export function Sidebar({ user }: SidebarProps) {
     }
 
     if (isHRMS) {
-      const hrmsItems: NavItem[] = [
+      const hrmsItems: NavItem[] = [];
+      if (isSuperAdmin) {
+        hrmsItems.push({
+          title: "Dashboard",
+          href: "/admin",
+          icon: LayoutDashboard,
+        });
+      }
+      hrmsItems.push(
         { title: "Overview", href: "/hrms", icon: Compass, shortcut: "⌘M" },
         { title: "Directory", href: "/hrms/directory", icon: Users },
         { title: "Attendance", href: "/hrms/attendance", icon: Clock },
         { title: "Leave & Off", href: "/hrms/leave", icon: CalendarCheck },
         { title: "Calendar", href: "/hrms/calendar", icon: Calendar },
-        { title: "Policies", href: "/hrms/policies", icon: BookText },
-      ];
+        { title: "Policies", href: "/hrms/policies", icon: BookText }
+      );
 
       const accessItems: NavItem[] = [];
       if (canViewHierarchy) {
@@ -198,13 +209,6 @@ export function Sidebar({ user }: SidebarProps) {
           title: "Team Hierarchy",
           href: "/hrms/departments",
           icon: ShieldAlert,
-        });
-      }
-      if (isSuperAdmin) {
-        accessItems.push({
-          title: "Super Admin HQ",
-          href: "/admin",
-          icon: ShieldCheck,
         });
       }
       accessItems.push(
@@ -225,23 +229,29 @@ export function Sidebar({ user }: SidebarProps) {
     }
 
     if (isSupport) {
-      const supportSettings: NavItem[] = [];
+      const supportItems: NavItem[] = [];
       if (isSuperAdmin) {
-        supportSettings.push({ title: "Super Admin HQ", href: "/admin", icon: ShieldCheck });
+        supportItems.push({
+          title: "Dashboard",
+          href: "/admin",
+          icon: LayoutDashboard,
+        });
       }
-      supportSettings.push(
-        { title: "Central Hub", href: "/portal", icon: LayoutGrid },
-        { title: "Settings", href: "/portal", icon: Settings }
+      supportItems.push(
+        { title: "Overview", href: "/support", icon: Compass },
+        { title: "Tickets", href: "/support/tickets", icon: MessageSquare, badge: 2 },
+        { title: "Quality Audits", href: "/support/quality", icon: ShieldCheck }
       );
+
+      const supportSettings: NavItem[] = [
+        { title: "Central Hub", href: "/portal", icon: LayoutGrid },
+        { title: "Settings", href: "/portal", icon: Settings },
+      ];
 
       return [
         {
           section: "Support Desk",
-          items: [
-            { title: "Overview", href: "/support", icon: Compass },
-            { title: "Tickets", href: "/support/tickets", icon: MessageSquare, badge: 2 },
-            { title: "Quality Audits", href: "/support/quality", icon: ShieldCheck },
-          ],
+          items: supportItems,
         },
         {
           section: "Settings and access",
@@ -251,13 +261,23 @@ export function Sidebar({ user }: SidebarProps) {
     }
 
     if (isChat) {
-      const chatSettings: NavItem[] = [];
-      if (isSuperAdmin) {
-        chatSettings.push({ title: "Super Admin HQ", href: "/admin", icon: ShieldCheck });
-      }
-      chatSettings.push(
+      const chatSettings: NavItem[] = [
         { title: "Central Hub", href: "/portal", icon: LayoutGrid },
-        { title: "Settings", href: "/portal", icon: Settings }
+        { title: "Settings", href: "/portal", icon: Settings },
+      ];
+
+      const enterpriseModules: NavItem[] = [];
+      if (isSuperAdmin) {
+        enterpriseModules.push({
+          title: "Dashboard",
+          href: "/admin",
+          icon: LayoutDashboard,
+        });
+      }
+      enterpriseModules.push(
+        { title: "CRM Suite", href: "/crm", icon: Briefcase },
+        { title: "HRMS Portal", href: "/hrms", icon: Users },
+        { title: "Support Desk", href: "/support", icon: MessageSquare }
       );
 
       return [
@@ -269,11 +289,7 @@ export function Sidebar({ user }: SidebarProps) {
         },
         {
           section: "Enterprise Modules",
-          items: [
-            { title: "CRM Suite", href: "/crm", icon: Briefcase },
-            { title: "HRMS Portal", href: "/hrms", icon: Users },
-            { title: "Support Desk", href: "/support", icon: MessageSquare },
-          ],
+          items: enterpriseModules,
         },
         {
           section: "Settings and access",
@@ -285,7 +301,7 @@ export function Sidebar({ user }: SidebarProps) {
     // Default / Global Fallback
     const fallbackMain: NavItem[] = [];
     if (isSuperAdmin) {
-      fallbackMain.push({ title: "Super Admin HQ", href: "/admin", icon: ShieldCheck });
+      fallbackMain.push({ title: "Dashboard", href: "/admin", icon: LayoutDashboard });
     }
     fallbackMain.push(
       { title: "Overview", href: "/portal", icon: Compass },

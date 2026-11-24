@@ -1,7 +1,8 @@
 import { redirect } from "next/navigation";
 import { getCurrentUser } from "@/lib/auth/session";
 import { getSuperAdminDashboardData } from "@/lib/actions/super-admin";
-import { SuperAdminDashboardClient } from "@/components/admin/SuperAdminDashboardClient";
+import { getSuperAdminHierarchyData } from "@/lib/actions/super-admin-hierarchy";
+import { UnifiedSuperAdminDashboard } from "@/components/admin/UnifiedSuperAdminDashboard";
 import { Role, SystemRole } from "@prisma/client";
 
 export const dynamic = "force-dynamic";
@@ -49,11 +50,16 @@ export default async function SuperAdminDashboardPage({
   const from = resolvedParams.from;
   const to = resolvedParams.to;
 
-  const initialData = await getSuperAdminDashboardData({
-    range,
-    from,
-    to,
-  });
+  const [initialData, initialHierarchy] = await Promise.all([
+    getSuperAdminDashboardData({ range, from, to }),
+    getSuperAdminHierarchyData({ range, from, to }),
+  ]);
 
-  return <SuperAdminDashboardClient initialData={initialData} user={user} />;
+  return (
+    <UnifiedSuperAdminDashboard
+      initialData={initialData}
+      initialHierarchy={initialHierarchy}
+      user={user}
+    />
+  );
 }

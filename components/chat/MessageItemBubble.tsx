@@ -27,22 +27,6 @@ interface MessageItemBubbleProps {
 
 const QUICK_REACTIONS = ["👍", "❤️", "😂", "😮", "😢", "🙏"];
 
-const getSenderTheme = (senderId?: string) => {
-  if (!senderId) return { bg: "from-[#ACCAD5] to-[#588594]", label: "text-[#3D6472]" };
-  const themes = [
-    { bg: "from-[#ACCAD5] to-[#588594]", label: "text-[#3D6472]" },
-    { bg: "from-[#FDEFE6] to-[#F0944D]", label: "text-[#C66318]" },
-    { bg: "from-[#E9D5FF] to-[#8B5CF6]", label: "text-[#6D28D9]" },
-    { bg: "from-[#D1FAE5] to-[#10B981]", label: "text-[#047857]" },
-    { bg: "from-[#E0E7FF] to-[#6366F1]", label: "text-[#4338CA]" },
-  ];
-  let hash = 0;
-  for (let i = 0; i < senderId.length; i++) {
-    hash = (hash << 5) - hash + senderId.charCodeAt(i);
-  }
-  return themes[Math.abs(hash) % themes.length];
-};
-
 export function MessageItemBubble({
   message,
   showDateSeparator,
@@ -118,8 +102,6 @@ export function MessageItemBubble({
     (a) => a.messageType !== "IMAGE" && !a.mimeType?.startsWith("image/")
   );
 
-  const senderTheme = getSenderTheme(message.senderId);
-
   const isSystemNotice =
     !message.attachmentUrl &&
     (!message.attachments || message.attachments.length === 0) &&
@@ -155,12 +137,9 @@ export function MessageItemBubble({
             message.isSelf ? "justify-end" : "justify-start"
           }`}
         >
-          {/* Other participant avatar (for received messages in group chats or oversight mode) */}
+          {/* Other participant avatar (for received messages in group chats) */}
           {!message.isSelf && isGroup && (
-            <div
-              className={`w-7 h-7 rounded-full bg-gradient-to-br ${senderTheme.bg} text-white flex items-center justify-center text-[10px] font-bold shrink-0 mb-1 shadow-2xs`}
-              title={`${message.senderName}${message.senderDepartment ? ` (${message.senderDepartment})` : ""}`}
-            >
+            <div className="w-7 h-7 rounded-full bg-gradient-to-br from-[#ACCAD5] to-[#F0944D] text-white flex items-center justify-center text-[10px] font-bold shrink-0 mb-1 shadow-2xs">
               {message.senderInitials}
             </div>
           )}
@@ -235,15 +214,13 @@ export function MessageItemBubble({
                   : "bg-white border border-slate-200/80 text-slate-900 rounded-bl-xs"
               }`}
             >
-              {/* Sender label (for received messages in group chat or oversight mode) */}
+              {/* Sender label (for received messages in group chat) */}
               {!message.isSelf && isGroup && (
-                <div
-                  className={`text-[11px] font-bold ${senderTheme.label} mb-1.5 flex items-center gap-1.5`}
-                >
+                <div className="text-[11px] font-bold text-[#C66318] mb-1.5 flex items-center gap-1.5">
                   <span>{message.senderName}</span>
                   {message.senderDepartment && (
-                    <span className="text-[9px] font-medium px-1.5 py-0.2 rounded-md bg-slate-100 text-slate-500 border border-slate-200/50">
-                      {message.senderDepartment}
+                    <span className="text-[9px] font-normal text-slate-400">
+                      • {message.senderDepartment}
                     </span>
                   )}
                 </div>

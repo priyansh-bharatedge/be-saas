@@ -6,6 +6,7 @@ import { signIn, signOut } from "@/auth";
 import { emailSchema, passwordLoginSchema, otpVerifySchema } from "@/lib/validations/auth";
 import { sendOtpEmail } from "@/lib/mail";
 import { AuthError } from "next-auth";
+import { Role, SystemRole } from "@prisma/client";
 
 export interface ServerActionResult {
   success: boolean;
@@ -118,9 +119,15 @@ export async function loginWithPasswordAction(
       redirect: false,
     });
 
+    const emp = await db.employee.findUnique({
+      where: { workEmail: validated.email.toLowerCase() },
+      select: { role: true, systemRole: true },
+    });
+    const isSuperAdmin = emp?.role === Role.Admin || emp?.systemRole === SystemRole.SUPER_ADMIN;
+
     return {
       success: true,
-      redirectTo: "/portal",
+      redirectTo: isSuperAdmin ? "/admin" : "/portal",
     };
   } catch (err: unknown) {
     if (err instanceof AuthError) {
@@ -162,9 +169,15 @@ export async function loginWithOtpAction(
       redirect: false,
     });
 
+    const emp = await db.employee.findUnique({
+      where: { workEmail: validated.email.toLowerCase() },
+      select: { role: true, systemRole: true },
+    });
+    const isSuperAdmin = emp?.role === Role.Admin || emp?.systemRole === SystemRole.SUPER_ADMIN;
+
     return {
       success: true,
-      redirectTo: "/portal",
+      redirectTo: isSuperAdmin ? "/admin" : "/portal",
     };
   } catch (err: unknown) {
     if (err instanceof AuthError) {

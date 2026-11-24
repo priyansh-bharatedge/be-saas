@@ -3,10 +3,9 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useSearchParams } from "next/navigation";
 import { ConversationSummary, MessageItem } from "@/lib/actions/chat";
-import { AuditConversationSummary, AuditStatsSummary } from "@/lib/actions/chat-audit";
+import { AuditConversationSummary } from "@/lib/actions/chat-audit";
 import { ConversationList } from "./ConversationList";
 import { ChatWindow } from "./ChatWindow";
-import { AuditOversightDashboard } from "./AuditOversightDashboard";
 import { NewGroupModal } from "./NewGroupModal";
 import { GroupInfoDrawer } from "./GroupInfoDrawer";
 import { StagedAttachment } from "./MessageComposer";
@@ -44,11 +43,8 @@ export function ChatClient({
   const [isLoadingAudit, setIsLoadingAudit] = useState(false);
   const [auditTypeFilter, setAuditTypeFilter] = useState<"ALL" | "DMS" | "GROUPS">("ALL");
   const [auditDepartmentFilter, setAuditDepartmentFilter] = useState<string>("ALL");
-  const [auditEmployeeFilter, setAuditEmployeeFilter] = useState<string>("ALL");
   const [auditSearch, setAuditSearch] = useState("");
   const [departmentsList, setDepartmentsList] = useState<string[]>([]);
-  const [auditStats, setAuditStats] = useState<AuditStatsSummary | null>(null);
-  const [isLoadingAuditStats, setIsLoadingAuditStats] = useState<boolean>(false);
 
   // Active chat state
   const [activeId, setActiveId] = useState<string | null>(urlConvId || null);
@@ -195,23 +191,6 @@ export function ChatClient({
     }
   }, [dispatchTopBarUnread]);
 
-  // Fetch audit stats for Super Admin Oversight Dashboard
-  const fetchAuditStats = useCallback(async () => {
-    if (!isSuperAdmin) return;
-    setIsLoadingAuditStats(true);
-    try {
-      const res = await fetch("/api/chat/admin/stats");
-      const data = await res.json();
-      if (data.success && data.stats) {
-        setAuditStats(data.stats);
-      }
-    } catch (err) {
-      console.error("Error fetching audit stats:", err);
-    } finally {
-      setIsLoadingAuditStats(false);
-    }
-  }, [isSuperAdmin]);
-
   // Fetch audit conversations for Super Admin
   const fetchAuditConversations = useCallback(async () => {
     if (!isSuperAdmin) return;
@@ -220,7 +199,6 @@ export function ChatClient({
       const params = new URLSearchParams();
       if (auditTypeFilter !== "ALL") params.set("chatType", auditTypeFilter);
       if (auditDepartmentFilter !== "ALL") params.set("department", auditDepartmentFilter);
-      if (auditEmployeeFilter !== "ALL") params.set("employeeId", auditEmployeeFilter);
       if (auditSearch.trim()) params.set("search", auditSearch.trim());
 
       const res = await fetch(`/api/chat/admin/conversations?${params.toString()}`);
@@ -243,7 +221,7 @@ export function ChatClient({
     } finally {
       setIsLoadingAudit(false);
     }
-  }, [isSuperAdmin, auditTypeFilter, auditDepartmentFilter, auditEmployeeFilter, auditSearch]);
+  }, [isSuperAdmin, auditTypeFilter, auditDepartmentFilter, auditSearch]);
 
   // When activeId changes, load messages based on mode
   useEffect(() => {
@@ -271,13 +249,12 @@ export function ChatClient({
     }
   }, [activeId, chatMode, fetchMessages, fetchAuditMessages, dispatchTopBarUnread]);
 
-  // When chatMode or audit filters change, reload audit conversations & stats
+  // When chatMode or audit filters change, reload audit conversations
   useEffect(() => {
     if (chatMode === "ALL_ORG_CHATS") {
       fetchAuditConversations();
-      fetchAuditStats();
     }
-  }, [chatMode, fetchAuditConversations, fetchAuditStats]);
+  }, [chatMode, fetchAuditConversations]);
 
   // Live polling ticker (runs every 3.5 seconds)
   useEffect(() => {
@@ -304,7 +281,6 @@ export function ChatClient({
   const handleModeChange = (newMode: "MY_CHATS" | "ALL_ORG_CHATS") => {
     setChatMode(newMode);
     setActiveId(null);
-    setAuditEmployeeFilter("ALL");
     setMessages([]);
     setShowMobileChat(false);
   };
@@ -616,48 +592,29 @@ export function ChatClient({
           onAuditTypeFilterChange={setAuditTypeFilter}
           auditDepartmentFilter={auditDepartmentFilter}
           onAuditDepartmentFilterChange={setAuditDepartmentFilter}
-          auditEmployeeFilter={auditEmployeeFilter}
-          onAuditEmployeeFilterChange={setAuditEmployeeFilter}
           auditSearch={auditSearch}
           onAuditSearchChange={setAuditSearch}
           departmentsList={departmentsList}
         />
       </div>
 
-      {/* Right Pane: Active Chat Window or Super Admin Oversight Dashboard */}
+      {/* Right Pane: Active Chat Window */}
       <div
         className={`${
           showMobileChat ? "flex" : "hidden md:flex"
         } flex-1 h-full z-10 flex-col overflow-hidden min-h-0`}
       >
-        {chatMode === "ALL_ORG_CHATS" && !activeConversation ? (
-          <AuditOversightDashboard
-            stats={auditStats}
-            isLoading={isLoadingAuditStats}
-            onFilterType={(type) => setAuditTypeFilter(type)}
-            onFilterDepartment={(dept) => setAuditDepartmentFilter(dept)}
-            onClearFilters={() => {
-              setAuditTypeFilter("ALL");
-              setAuditDepartmentFilter("ALL");
-              setAuditEmployeeFilter("ALL");
-              setAuditSearch("");
-            }}
-            activeTypeFilter={auditTypeFilter}
-            activeDeptFilter={auditDepartmentFilter}
-          />
-        ) : (
-          <ChatWindow
-            conversation={activeConversation}
-            messages={messages}
-            currentUserId={currentUserId}
-            onSendMessage={handleSendMessage}
-            onOpenInfo={() => setInfoDrawerOpen(true)}
-            onBackMobile={() => setShowMobileChat(false)}
-            isLoadingMessages={isLoadingMessages}
-            onToggleReaction={handleToggleReaction}
-            isOversightMode={chatMode === "ALL_ORG_CHATS"}
-          />
-        )}
+        <ChatWindow
+          conversation={activeConversation}
+          messages={messages}
+          currentUserId={currentUserId}
+          onSendMessage={handleSendMessage}
+          onOpenInfo={() => setInfoDrawerOpen(true)}
+          onBackMobile={() => setShowMobileChat(false)}
+          isLoadingMessages={isLoadingMessages}
+          onToggleReaction={handleToggleReaction}
+          isOversightMode={chatMode === "ALL_ORG_CHATS"}
+        />
       </div>
 
       {/* New Group Modal */}

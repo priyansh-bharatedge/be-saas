@@ -45,8 +45,6 @@ interface ConversationListProps {
   onAuditTypeFilterChange?: (type: "ALL" | "DMS" | "GROUPS") => void;
   auditDepartmentFilter?: string;
   onAuditDepartmentFilterChange?: (dept: string) => void;
-  auditEmployeeFilter?: string;
-  onAuditEmployeeFilterChange?: (empId: string) => void;
   auditSearch?: string;
   onAuditSearchChange?: (val: string) => void;
   departmentsList?: string[];
@@ -68,8 +66,6 @@ export function ConversationList({
   onAuditTypeFilterChange,
   auditDepartmentFilter = "ALL",
   onAuditDepartmentFilterChange,
-  auditEmployeeFilter = "ALL",
-  onAuditEmployeeFilterChange,
   auditSearch = "",
   onAuditSearchChange,
   departmentsList = [],
@@ -241,45 +237,22 @@ export function ConversationList({
                 ))}
               </div>
 
-              {/* Department & Employee Filter Dropdowns */}
-              <div className="grid grid-cols-2 gap-1.5">
-                {/* Department Dropdown */}
-                <div className="relative flex items-center">
-                  <Building2 className="absolute left-2.5 h-3.5 w-3.5 text-slate-400 pointer-events-none" />
-                  <select
-                    value={auditDepartmentFilter}
-                    onChange={(e) => onAuditDepartmentFilterChange?.(e.target.value)}
-                    className="w-full pl-8 pr-6 py-1.5 text-[11px] rounded-lg bg-white border border-slate-200 text-slate-700 font-medium focus:outline-none focus:border-[#588594] appearance-none cursor-pointer truncate"
-                    title="Filter by Department"
-                  >
-                    <option value="ALL">All Depts</option>
-                    {departmentsList.map((d) => (
-                      <option key={d} value={d}>
-                        {d}
-                      </option>
-                    ))}
-                  </select>
-                  <ChevronDown className="absolute right-2 h-3 w-3 text-slate-400 pointer-events-none" />
-                </div>
-
-                {/* Employee Dropdown */}
-                <div className="relative flex items-center">
-                  <Users className="absolute left-2.5 h-3.5 w-3.5 text-slate-400 pointer-events-none" />
-                  <select
-                    value={auditEmployeeFilter}
-                    onChange={(e) => onAuditEmployeeFilterChange?.(e.target.value)}
-                    className="w-full pl-8 pr-6 py-1.5 text-[11px] rounded-lg bg-white border border-slate-200 text-slate-700 font-medium focus:outline-none focus:border-[#588594] appearance-none cursor-pointer truncate"
-                    title="Filter by Employee"
-                  >
-                    <option value="ALL">All Staff</option>
-                    {colleagues.map((emp) => (
-                      <option key={emp.id} value={emp.id}>
-                        {emp.name}
-                      </option>
-                    ))}
-                  </select>
-                  <ChevronDown className="absolute right-2 h-3 w-3 text-slate-400 pointer-events-none" />
-                </div>
+              {/* Department Dropdown */}
+              <div className="relative flex items-center">
+                <Building2 className="absolute left-2.5 h-3.5 w-3.5 text-slate-400 pointer-events-none" />
+                <select
+                  value={auditDepartmentFilter}
+                  onChange={(e) => onAuditDepartmentFilterChange?.(e.target.value)}
+                  className="w-full pl-8 pr-7 py-1.5 text-[11px] rounded-lg bg-white border border-slate-200 text-slate-700 font-medium focus:outline-none focus:border-[#588594] appearance-none cursor-pointer"
+                >
+                  <option value="ALL">All Departments</option>
+                  {departmentsList.map((d) => (
+                    <option key={d} value={d}>
+                      {d}
+                    </option>
+                  ))}
+                </select>
+                <ChevronDown className="absolute right-2.5 h-3 w-3 text-slate-400 pointer-events-none" />
               </div>
             </div>
           </div>
@@ -401,27 +374,9 @@ export function ConversationList({
                       </span>
                     </div>
 
-                    <div className="flex items-center gap-1.5 flex-wrap my-1">
-                      {conv.departments.length > 0 ? (
-                        conv.departments.slice(0, 2).map((d) => (
-                          <span
-                            key={d}
-                            className="px-1.5 py-0.5 rounded-md bg-[#EBF3F6] text-[#3D6472] font-semibold text-[9px] border border-[#ACCAD5]/40 truncate max-w-[110px]"
-                          >
-                            {d}
-                          </span>
-                        ))
-                      ) : (
-                        <span className="text-[10px] text-slate-400 font-mono">
-                          {conv.displaySubtitle}
-                        </span>
-                      )}
-                      {conv.isGroup && (
-                        <span className="text-[9px] text-slate-400 font-mono">
-                          {conv.participantCount} members
-                        </span>
-                      )}
-                    </div>
+                    <p className="text-[11px] text-slate-400 truncate mb-1">
+                      {conv.displaySubtitle}
+                    </p>
 
                     <div className="flex items-center justify-between gap-2">
                       <p className="text-xs text-slate-500 truncate flex items-center gap-1">

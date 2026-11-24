@@ -18,14 +18,12 @@ export async function GET(req: NextRequest) {
     const { searchParams } = new URL(req.url);
     const chatType = (searchParams.get("chatType") as "ALL" | "DMS" | "GROUPS") || "ALL";
     const department = searchParams.get("department") || undefined;
-    const employeeId = searchParams.get("employeeId") || undefined;
     const search = searchParams.get("search") || undefined;
     const limit = parseInt(searchParams.get("limit") || "50", 10);
 
     const res = await getAdminConversationsAction({
       chatType,
       department,
-      employeeId,
       search,
       limit,
     });
