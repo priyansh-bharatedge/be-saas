@@ -54,7 +54,16 @@ export async function POST(req: NextRequest) {
     }
 
     const body = await req.json();
-    const { conversationId, content, messageType, attachmentUrl, attachmentName, attachmentSize, attachmentMimeType } = body;
+    const {
+      conversationId,
+      content,
+      messageType,
+      attachmentUrl,
+      attachmentName,
+      attachmentSize,
+      attachmentMimeType,
+      attachments,
+    } = body;
 
     if (!conversationId) {
       return NextResponse.json({ error: "conversationId is required." }, { status: 400 });
@@ -78,6 +87,7 @@ export async function POST(req: NextRequest) {
       attachmentName,
       attachmentSize,
       attachmentMimeType,
+      attachments,
     });
 
     if (!res.success) {

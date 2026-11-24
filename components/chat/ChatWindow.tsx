@@ -1,11 +1,11 @@
 "use client";
 
 import { useEffect, useRef } from "react";
-import { ArrowLeft, Users, Info, MessageSquare, Shield } from "lucide-react";
+import { ArrowLeft, Users, Info, MessageSquare, ShieldCheck, Lock, Sparkles } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { MessageItem, ConversationSummary } from "@/lib/actions/chat";
 import { MessageItemBubble } from "./MessageItemBubble";
-import { MessageComposer } from "./MessageComposer";
+import { MessageComposer, StagedAttachment } from "./MessageComposer";
 
 interface ChatWindowProps {
   conversation: ConversationSummary | null;
@@ -18,6 +18,7 @@ interface ChatWindowProps {
     attachmentSize?: number;
     attachmentMimeType?: string;
     messageType?: "TEXT" | "IMAGE" | "DOCUMENT" | "FILE";
+    attachments?: StagedAttachment[];
   }) => Promise<void>;
   onOpenInfo: () => void;
   onBackMobile: () => void;
@@ -42,16 +43,55 @@ export function ChatWindow({
     }
   }, [messages]);
 
+  // Default Empty State (WhatsApp Web Style)
   if (!conversation) {
     return (
-      <div className="flex-1 flex flex-col items-center justify-center p-8 text-center bg-slate-50/50">
-        <div className="w-16 h-16 rounded-3xl bg-[#EBF3F6] border border-[#ACCAD5]/50 flex items-center justify-center text-[#588594] mb-4 shadow-sm">
-          <MessageSquare className="h-8 w-8" />
+      <div className="flex-1 flex flex-col items-center justify-center p-8 text-center bg-gradient-to-b from-[#FCFAF7]/90 to-[#F4F7F9]/80 h-full relative select-none overflow-hidden">
+        {/* Soft background ambient blurs */}
+        <div className="pointer-events-none absolute w-72 h-72 rounded-full bg-[#ACCAD5]/20 blur-3xl -top-10 -right-10" />
+        <div className="pointer-events-none absolute w-72 h-72 rounded-full bg-[#F0944D]/15 blur-3xl -bottom-10 -left-10" />
+
+        <div className="relative z-10 max-w-md flex flex-col items-center">
+          {/* Logo Badge */}
+          <div className="w-20 h-20 rounded-3xl bg-white border border-[#ACCAD5]/50 flex items-center justify-center shadow-lg shadow-[#ACCAD5]/20 mb-5 relative group">
+            <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-[#EBF3F6] to-[#CBDDE4] flex items-center justify-center text-[#3D6472]">
+              <MessageSquare className="h-8 w-8 text-[#588594]" />
+            </div>
+            <div className="absolute -bottom-1 -right-1 w-6 h-6 rounded-full bg-[#F0944D] text-white flex items-center justify-center shadow-xs">
+              <Sparkles className="h-3 w-3" />
+            </div>
+          </div>
+
+          <h2 className="text-xl font-bold tracking-tight text-slate-800">
+            BharatEdge Team Chat
+          </h2>
+          <p className="text-xs text-slate-500 mt-2 leading-relaxed">
+            Send and receive internal real-time messages, departmental announcements, and multi-file attachments.
+          </p>
+
+          {/* Quick Feature Badges */}
+          <div className="flex flex-wrap items-center justify-center gap-2 mt-6">
+            <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-white/90 border border-slate-200/80 text-[11px] font-medium text-slate-600 shadow-2xs">
+              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
+              Live Presence & Delivery Ticks
+            </span>
+            <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-white/90 border border-slate-200/80 text-[11px] font-medium text-slate-600 shadow-2xs">
+              <span className="w-1.5 h-1.5 rounded-full bg-[#588594]" />
+              Multiple File Attachments
+            </span>
+          </div>
+
+          {/* Prompt */}
+          <div className="mt-8 p-3 px-4 rounded-2xl bg-white/80 border border-slate-200/60 shadow-xs text-xs text-slate-600">
+            👈 Select a conversation on the left or use the search bar to find a colleague.
+          </div>
+
+          {/* Encrypted Notice */}
+          <div className="mt-10 flex items-center gap-1.5 text-[10px] text-slate-400 font-medium">
+            <Lock className="h-3 w-3 text-slate-400" />
+            <span>Encrypted internal corporate network</span>
+          </div>
         </div>
-        <h3 className="text-base font-bold text-slate-800">Select a Conversation</h3>
-        <p className="text-xs text-slate-400 max-w-sm mt-1">
-          Pick a chat from the left panel or search any team member to start collaborating.
-        </p>
       </div>
     );
   }
@@ -68,9 +108,9 @@ export function ChatWindow({
   };
 
   return (
-    <div className="flex-1 flex flex-col h-full bg-[#FCFAF7]/60 overflow-hidden">
+    <div className="flex-1 flex flex-col h-full bg-[#FCFAF7]/60 overflow-hidden min-h-0">
       {/* Active Chat Header */}
-      <div className="px-4 py-3 sm:px-6 bg-white/80 backdrop-blur-md border-b border-slate-200/80 flex items-center justify-between shrink-0">
+      <div className="px-4 py-3 sm:px-6 bg-white/85 backdrop-blur-md border-b border-slate-200/80 flex items-center justify-between shrink-0 z-10">
         <div className="flex items-center gap-3 min-w-0">
           {/* Mobile Back Button */}
           <Button
@@ -120,10 +160,10 @@ export function ChatWindow({
         </Button>
       </div>
 
-      {/* Messages Scroll Area */}
+      {/* Messages Scroll Area (Internally scrolling, flex-1 min-h-0) */}
       <div
         ref={scrollRef}
-        className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-4 scroll-smooth"
+        className="flex-1 overflow-y-auto min-h-0 p-4 sm:p-6 space-y-4 scroll-smooth"
       >
         {isLoadingMessages && messages.length === 0 ? (
           <div className="p-8 text-center text-xs text-slate-400">Loading chat history...</div>
@@ -151,7 +191,7 @@ export function ChatWindow({
         )}
       </div>
 
-      {/* Message Composer */}
+      {/* Sticky Message Composer (Permanently pinned at bottom) */}
       <MessageComposer
         conversationId={conversation.id}
         onSendMessage={onSendMessage}

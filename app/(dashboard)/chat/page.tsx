@@ -26,26 +26,13 @@ export default async function TeamChatPage() {
   const initialColleagues = colleaguesRes.success && colleaguesRes.data ? colleaguesRes.data : [];
 
   return (
-    <PageTransition>
-      <div className="space-y-4">
-        {/* Top Header */}
-        <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-2xl font-bold tracking-tight text-slate-900">
-              Team Chat & Collaboration
-            </h1>
-            <p className="text-xs text-slate-500 mt-0.5">
-              Secure real-time internal messaging, departmental groups, and document sharing.
-            </p>
-          </div>
-          <div className="hidden sm:flex items-center gap-2">
-            <span className="text-[11px] font-mono px-3 py-1 rounded-full bg-white/80 border border-slate-200/80 text-slate-700 font-semibold shadow-2xs">
-              {user.department || "Enterprise"} • {user.role}
-            </span>
-          </div>
-        </div>
-
-        {/* Master WhatsApp-Style Chat Client */}
+    <PageTransition className="h-full flex flex-col min-h-0">
+      {/* 
+        Clean viewport-constrained container:
+        Matches exact available content height within DashboardLayout's main padding 
+        preventing any outer window scrolling so the message composer remains sticky.
+      */}
+      <div className="h-[calc(100vh-7.5rem)] sm:h-[calc(100vh-8.5rem)] lg:h-[calc(100vh-9.5rem)] w-full flex flex-col overflow-hidden min-h-0">
         <ChatClient
           initialConversations={initialConversations}
           currentUserId={user.id}

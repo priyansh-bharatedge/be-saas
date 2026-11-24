@@ -158,7 +158,7 @@ export function ConversationList({
       )}
 
       {/* Conversations List */}
-      <div className="flex-1 overflow-y-auto divide-y divide-slate-100">
+      <div className="flex-1 overflow-y-auto min-h-0 divide-y divide-slate-100">
         {filteredConversations.length === 0 ? (
           <div className="p-8 text-center space-y-3">
             <div className="w-12 h-12 rounded-2xl bg-[#EBF3F6] border border-[#ACCAD5]/40 flex items-center justify-center text-[#588594] mx-auto">
@@ -245,9 +245,9 @@ export function ConversationList({
                       )}
                     </p>
 
-                    {/* Unread Count Badge */}
+                    {/* Unread Count Badge (WhatsApp Emerald Style) */}
                     {hasUnread && (
-                      <span className="h-5 min-w-[20px] px-1.5 rounded-full bg-[#F0944D] text-white text-[10px] font-bold flex items-center justify-center shrink-0 shadow-2xs">
+                      <span className="h-5 min-w-[20px] px-1.5 rounded-full bg-emerald-500 text-white text-[10px] font-bold flex items-center justify-center shrink-0 shadow-xs animate-in zoom-in-75">
                         {conv.unreadCount > 99 ? "99+" : conv.unreadCount}
                       </span>
                     )}

@@ -23,6 +23,14 @@ export interface ChatParticipantInfo {
   lastReadAt: string | null;
 }
 
+export interface ChatAttachmentItem {
+  url: string;
+  name: string;
+  size: number;
+  mimeType: string;
+  messageType: "IMAGE" | "DOCUMENT" | "FILE";
+}
+
 export interface ConversationSummary {
   id: string;
   isGroup: boolean;
@@ -56,8 +64,10 @@ export interface MessageItem {
   attachmentName: string | null;
   attachmentSize: number | null;
   attachmentMimeType: string | null;
+  attachments?: ChatAttachmentItem[];
   createdAt: string;
   isSelf: boolean;
+  status: "SENT" | "DELIVERED" | "READ";
 }
 
 /**
@@ -365,6 +375,19 @@ export async function getMessagesAction(
       },
     });
 
+    // Query participants to compute read receipts (lastReadAt)
+    const participants = await db.chatParticipant.findMany({
+      where: { conversationId },
+      select: { employeeId: true, lastReadAt: true },
+    });
+
+    const otherParticipants = participants.filter((p) => p.employeeId !== user.id);
+    const maxOtherReadAt = otherParticipants.reduce<Date | null>((latest, p) => {
+      if (!p.lastReadAt) return latest;
+      if (!latest || p.lastReadAt > latest) return p.lastReadAt;
+      return latest;
+    }, null);
+
     const messages = await db.chatMessage.findMany({
       where: {
         conversationId,
@@ -392,6 +415,38 @@ export async function getMessagesAction(
       const last = m.sender?.lastName || "";
       const initials = `${first.charAt(0)}${last.charAt(0)}`.toUpperCase();
 
+      let status: "SENT" | "DELIVERED" | "READ" = "DELIVERED";
+      if (isSelf) {
+        if (maxOtherReadAt && new Date(m.createdAt) <= maxOtherReadAt) {
+          status = "READ";
+        } else {
+          status = "DELIVERED";
+        }
+      } else {
+        status = "READ";
+      }
+
+      // Parse multi-attachment JSON or fallback to legacy single attachment fields
+      let parsedAttachments: ChatAttachmentItem[] | undefined = undefined;
+      if (m.attachments && Array.isArray(m.attachments)) {
+        parsedAttachments = m.attachments as unknown as ChatAttachmentItem[];
+      } else if (m.attachmentUrl) {
+        parsedAttachments = [
+          {
+            url: m.attachmentUrl,
+            name: m.attachmentName || "Attachment",
+            size: m.attachmentSize || 0,
+            mimeType: m.attachmentMimeType || "application/octet-stream",
+            messageType:
+              m.messageType === "IMAGE"
+                ? "IMAGE"
+                : m.messageType === "DOCUMENT"
+                ? "DOCUMENT"
+                : "FILE",
+          },
+        ];
+      }
+
       return {
         id: m.id,
         conversationId: m.conversationId,
@@ -405,8 +460,10 @@ export async function getMessagesAction(
         attachmentName: m.attachmentName,
         attachmentSize: m.attachmentSize,
         attachmentMimeType: m.attachmentMimeType,
+        attachments: parsedAttachments,
         createdAt: m.createdAt.toISOString(),
         isSelf,
+        status,
       };
     });
 
@@ -431,6 +488,7 @@ export async function sendMessageAction(data: {
   attachmentName?: string;
   attachmentSize?: number;
   attachmentMimeType?: string;
+  attachments?: ChatAttachmentItem[];
 }): Promise<ActionResult<MessageItem>> {
   try {
     const user = await getCurrentUser();
@@ -441,6 +499,10 @@ export async function sendMessageAction(data: {
     const {
       conversationId,
       content,
+      attachments,
+    } = data;
+
+    let {
       messageType = ChatMessageType.TEXT,
       attachmentUrl,
       attachmentName,
@@ -448,11 +510,28 @@ export async function sendMessageAction(data: {
       attachmentMimeType,
     } = data;
 
+    // If attachments array is provided and non-empty, sync first attachment for backward compatibility
+    if (attachments && attachments.length > 0) {
+      const first = attachments[0];
+      if (!attachmentUrl) attachmentUrl = first.url;
+      if (!attachmentName) attachmentName = first.name;
+      if (!attachmentSize) attachmentSize = first.size;
+      if (!attachmentMimeType) attachmentMimeType = first.mimeType;
+      if (messageType === ChatMessageType.TEXT) {
+        messageType =
+          first.messageType === "IMAGE"
+            ? ChatMessageType.IMAGE
+            : first.messageType === "DOCUMENT"
+            ? ChatMessageType.DOCUMENT
+            : ChatMessageType.FILE;
+      }
+    }
+
     // 403 Security Check
     await assertConversationMembership(conversationId, user.id);
 
     const textContent = content?.trim() || null;
-    if (!textContent && !attachmentUrl) {
+    if (!textContent && !attachmentUrl && (!attachments || attachments.length === 0)) {
       return { success: false, error: "Cannot send an empty message." };
     }
 
@@ -469,6 +548,7 @@ export async function sendMessageAction(data: {
           attachmentName: attachmentName || null,
           attachmentSize: attachmentSize || null,
           attachmentMimeType: attachmentMimeType || null,
+          attachments: attachments && attachments.length > 0 ? (attachments as any) : undefined,
         },
         include: {
           sender: {
@@ -513,8 +593,10 @@ export async function sendMessageAction(data: {
       attachmentName: message.attachmentName,
       attachmentSize: message.attachmentSize,
       attachmentMimeType: message.attachmentMimeType,
+      attachments: attachments && attachments.length > 0 ? attachments : undefined,
       createdAt: message.createdAt.toISOString(),
       isSelf: true,
+      status: "DELIVERED",
     };
 
     return { success: true, data: formatted };
@@ -627,5 +709,41 @@ export async function leaveGroupAction(conversationId: string): Promise<ActionRe
   } catch (error) {
     console.error("Error leaving group:", error);
     return { success: false, error: "Failed to leave group." };
+  }
+}
+
+/**
+ * Marks all messages in a conversation as read by updating current user's lastReadAt
+ */
+export async function markConversationAsReadAction(
+  conversationId: string
+): Promise<ActionResult<boolean>> {
+  try {
+    const user = await getCurrentUser();
+    if (!user) {
+      return { success: false, error: "Unauthorized." };
+    }
+
+    await assertConversationMembership(conversationId, user.id);
+
+    await db.chatParticipant.update({
+      where: {
+        conversationId_employeeId: {
+          conversationId,
+          employeeId: user.id,
+        },
+      },
+      data: {
+        lastReadAt: new Date(),
+      },
+    });
+
+    return { success: true, data: true };
+  } catch (error) {
+    console.error("Error marking conversation as read:", error);
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : "Failed to mark as read.",
+    };
   }
 }

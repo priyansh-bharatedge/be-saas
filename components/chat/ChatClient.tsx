@@ -6,6 +6,8 @@ import { ConversationList } from "./ConversationList";
 import { ChatWindow } from "./ChatWindow";
 import { NewGroupModal } from "./NewGroupModal";
 import { GroupInfoDrawer } from "./GroupInfoDrawer";
+import { StagedAttachment } from "./MessageComposer";
+import { playSendSound, playReceiveSound } from "@/lib/chat/audio";
 
 interface ChatClientProps {
   initialConversations: ConversationSummary[];
@@ -19,9 +21,8 @@ export function ChatClient({
   initialColleagues,
 }: ChatClientProps) {
   const [conversations, setConversations] = useState<ConversationSummary[]>(initialConversations);
-  const [activeId, setActiveId] = useState<string | null>(
-    initialConversations.length > 0 ? initialConversations[0].id : null
-  );
+  // Requirement 2: Default empty state - do not auto-select any conversation on load
+  const [activeId, setActiveId] = useState<string | null>(null);
   const [messages, setMessages] = useState<MessageItem[]>([]);
   const [isLoadingMessages, setIsLoadingMessages] = useState(false);
   const [showMobileChat, setShowMobileChat] = useState(false);
@@ -32,21 +33,46 @@ export function ChatClient({
   const activeIdRef = useRef<string | null>(activeId);
   activeIdRef.current = activeId;
 
+  // Sound detection refs
+  const prevMessageIdsRef = useRef<Set<string>>(new Set());
+  const initialFetchDoneRef = useRef<boolean>(false);
+  const prevTotalUnreadRef = useRef<number>(
+    initialConversations.reduce((acc, c) => acc + c.unreadCount, 0)
+  );
+
   // Fetch messages for active conversation
-  const fetchMessages = useCallback(async (convId: string, showLoading = false) => {
-    if (showLoading) setIsLoadingMessages(true);
-    try {
-      const res = await fetch(`/api/chat/messages?conversationId=${convId}&limit=100`);
-      const data = await res.json();
-      if (data.success && data.messages) {
-        setMessages(data.messages);
+  const fetchMessages = useCallback(
+    async (convId: string, showLoading = false) => {
+      if (showLoading) setIsLoadingMessages(true);
+      try {
+        const res = await fetch(`/api/chat/messages?conversationId=${convId}&limit=100`);
+        const data = await res.json();
+        if (data.success && data.messages) {
+          const incoming: MessageItem[] = data.messages;
+
+          // Detect new incoming messages from other participants to play sound
+          if (initialFetchDoneRef.current) {
+            const hasNewIncoming = incoming.some(
+              (m) => !prevMessageIdsRef.current.has(m.id) && m.senderId !== currentUserId
+            );
+            if (hasNewIncoming) {
+              playReceiveSound();
+            }
+          } else {
+            initialFetchDoneRef.current = true;
+          }
+
+          prevMessageIdsRef.current = new Set(incoming.map((m) => m.id));
+          setMessages(incoming);
+        }
+      } catch (err) {
+        console.error("Error fetching messages:", err);
+      } finally {
+        if (showLoading) setIsLoadingMessages(false);
       }
-    } catch (err) {
-      console.error("Error fetching messages:", err);
-    } finally {
-      if (showLoading) setIsLoadingMessages(false);
-    }
-  }, []);
+    },
+    [currentUserId]
+  );
 
   // Fetch conversation list for unread badges and order
   const fetchConversations = useCallback(async () => {
@@ -54,7 +80,16 @@ export function ChatClient({
       const res = await fetch("/api/chat/conversations");
       const data = await res.json();
       if (data.success && data.conversations) {
-        setConversations(data.conversations);
+        const updatedList: ConversationSummary[] = data.conversations;
+
+        // If unread count increased across any conversation, play notification chime
+        const totalUnread = updatedList.reduce((acc, c) => acc + c.unreadCount, 0);
+        if (totalUnread > prevTotalUnreadRef.current) {
+          playReceiveSound();
+        }
+        prevTotalUnreadRef.current = totalUnread;
+
+        setConversations(updatedList);
       }
     } catch (err) {
       console.error("Error fetching conversations:", err);
@@ -64,11 +99,18 @@ export function ChatClient({
   // When activeId changes, load messages and mark as read
   useEffect(() => {
     if (activeId) {
+      initialFetchDoneRef.current = false;
       fetchMessages(activeId, true);
       // Reset unread count locally for active conversation
       setConversations((prev) =>
         prev.map((c) => (c.id === activeId ? { ...c, unreadCount: 0 } : c))
       );
+      // Persist read state in PostgreSQL
+      fetch("/api/chat/read", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ conversationId: activeId }),
+      }).catch((err) => console.error("Error marking read:", err));
     } else {
       setMessages([]);
     }
@@ -92,6 +134,16 @@ export function ChatClient({
   const handleSelectConversation = (id: string) => {
     setActiveId(id);
     setShowMobileChat(true);
+    // Immediately clear unread badge in sidebar
+    setConversations((prev) =>
+      prev.map((c) => (c.id === id ? { ...c, unreadCount: 0 } : c))
+    );
+    // Update DB
+    fetch("/api/chat/read", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ conversationId: id }),
+    }).catch((err) => console.error("Error marking read:", err));
   };
 
   // Start 1-on-1 DM
@@ -120,7 +172,7 @@ export function ChatClient({
     setShowMobileChat(true);
   };
 
-  // Handle send message with optimistic UI
+  // Handle send message with optimistic UI and notification sound
   const handleSendMessage = async (payload: {
     content?: string;
     attachmentUrl?: string;
@@ -128,10 +180,14 @@ export function ChatClient({
     attachmentSize?: number;
     attachmentMimeType?: string;
     messageType?: "TEXT" | "IMAGE" | "DOCUMENT" | "FILE";
+    attachments?: StagedAttachment[];
   }) => {
     if (!activeId) return;
 
-    // Optimistic message
+    // Requirement 3: Play send sound
+    playSendSound();
+
+    // Optimistic message with status "SENT" (single grey tick)
     const tempId = `temp-${Date.now()}`;
     const optimisticMsg: MessageItem = {
       id: tempId,
@@ -145,11 +201,14 @@ export function ChatClient({
       attachmentName: payload.attachmentName || null,
       attachmentSize: payload.attachmentSize || null,
       attachmentMimeType: payload.attachmentMimeType || null,
+      attachments: payload.attachments,
       createdAt: new Date().toISOString(),
       isSelf: true,
+      status: "SENT",
     };
 
     setMessages((prev) => [...prev, optimisticMsg]);
+    prevMessageIdsRef.current.add(tempId);
 
     try {
       const res = await fetch("/api/chat/messages", {
@@ -166,6 +225,8 @@ export function ChatClient({
         setMessages((prev) =>
           prev.map((m) => (m.id === tempId ? data.message : m))
         );
+        prevMessageIdsRef.current.delete(tempId);
+        prevMessageIdsRef.current.add(data.message.id);
         fetchConversations();
       }
     } catch (err) {
@@ -182,7 +243,7 @@ export function ChatClient({
   };
 
   return (
-    <div className="relative h-[calc(100vh-8.5rem)] rounded-[32px] bg-white/75 backdrop-blur-2xl border border-white/80 shadow-[0_12px_40px_rgba(0,0,0,0.03)] overflow-hidden flex flex-row">
+    <div className="relative h-full w-full rounded-[24px] sm:rounded-[28px] lg:rounded-[32px] bg-white/75 backdrop-blur-2xl border border-white/80 shadow-[0_12px_40px_rgba(0,0,0,0.03)] overflow-hidden flex flex-row min-h-0">
       {/* Ambient background blur */}
       <div className="pointer-events-none absolute -left-20 -top-20 w-80 h-80 rounded-full bg-[#ACCAD5]/25 blur-3xl" />
       <div className="pointer-events-none absolute -right-20 -bottom-20 w-80 h-80 rounded-full bg-[#F0944D]/15 blur-3xl" />
@@ -207,7 +268,7 @@ export function ChatClient({
       <div
         className={`${
           showMobileChat ? "flex" : "hidden md:flex"
-        } flex-1 h-full z-10 flex-col overflow-hidden`}
+        } flex-1 h-full z-10 flex-col overflow-hidden min-h-0`}
       >
         <ChatWindow
           conversation={activeConversation}

@@ -1041,6 +1041,7 @@ model ChatMessage {
   attachmentName     String?
   attachmentSize     Int?
   attachmentMimeType String?
+  attachments        Json?
   isDeleted          Boolean          @default(false)
 
   createdAt          DateTime         @default(now())
