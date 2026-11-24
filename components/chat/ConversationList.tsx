@@ -347,13 +347,25 @@ export function ConversationList({
                   {/* Avatar */}
                   <div className="relative shrink-0">
                     <div
-                      className={`w-10 h-10 rounded-2xl flex items-center justify-center text-xs font-bold shadow-2xs ${
-                        conv.isGroup
+                      className={`w-10 h-10 rounded-2xl flex items-center justify-center text-xs font-bold shadow-2xs overflow-hidden ${
+                        conv.avatarUrl
+                          ? "border border-slate-200/80 bg-slate-100"
+                          : conv.isGroup
                           ? "bg-gradient-to-br from-[#ACCAD5] to-[#7EA9B8] text-white border border-white"
                           : "bg-gradient-to-br from-[#FDEFE6] to-[#F7BA8C] text-[#C66318] border border-[#F0944D]/30"
                       }`}
                     >
-                      {conv.isGroup ? <Users className="h-5 w-5" /> : initial}
+                      {conv.avatarUrl ? (
+                        <img
+                          src={conv.avatarUrl}
+                          alt={conv.displayTitle}
+                          className="w-full h-full object-cover"
+                        />
+                      ) : conv.isGroup ? (
+                        <Users className="h-5 w-5" />
+                      ) : (
+                        initial
+                      )}
                     </div>
                   </div>
 
@@ -443,13 +455,25 @@ export function ConversationList({
                   {/* Avatar Icon with Online Badge */}
                   <div className="relative shrink-0">
                     <div
-                      className={`w-10 h-10 rounded-2xl flex items-center justify-center text-xs font-bold shadow-2xs transition-transform ${
-                        conv.isGroup
+                      className={`w-10 h-10 rounded-2xl flex items-center justify-center text-xs font-bold shadow-2xs transition-transform overflow-hidden ${
+                        conv.avatarUrl
+                          ? "border border-slate-200/80 bg-slate-100"
+                          : conv.isGroup
                           ? "bg-gradient-to-br from-[#ACCAD5] to-[#7EA9B8] text-white border border-white"
                           : "bg-gradient-to-br from-[#FDEFE6] to-[#F7BA8C] text-[#C66318] border border-[#F0944D]/30"
                       }`}
                     >
-                      {conv.isGroup ? <Users className="h-5 w-5" /> : initial}
+                      {conv.avatarUrl ? (
+                        <img
+                          src={conv.avatarUrl}
+                          alt={conv.name}
+                          className="w-full h-full object-cover"
+                        />
+                      ) : conv.isGroup ? (
+                        <Users className="h-5 w-5" />
+                      ) : (
+                        initial
+                      )}
                     </div>
 
                     {/* Green Online Dot for 1-on-1 */}

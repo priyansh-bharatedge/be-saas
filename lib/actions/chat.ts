@@ -24,6 +24,7 @@ export interface ChatParticipantInfo {
   department: string;
   designation: string;
   profilePic?: string | null;
+  avatarUrl?: string | null;
   role: ChatParticipantRole;
   canSendMessages: boolean;
   lastReadAt: string | null;
@@ -69,6 +70,7 @@ export interface MessageItem {
   senderId: string;
   senderName: string;
   senderInitials: string;
+  senderAvatarUrl?: string | null;
   senderDepartment?: string;
   content: string | null;
   messageType: ChatMessageType;
@@ -144,6 +146,7 @@ export async function getConversationsAction(): Promise<ActionResult<Conversatio
                     isOnline: true,
                     lastSeen: true,
                     lastActiveAt: true,
+                    avatarUrl: true,
                     attendances: {
                       where: { date: todayDate },
                       select: { currentStatus: true },
@@ -163,6 +166,7 @@ export async function getConversationsAction(): Promise<ActionResult<Conversatio
                     id: true,
                     firstName: true,
                     lastName: true,
+                    avatarUrl: true,
                   },
                 },
               },
@@ -213,6 +217,7 @@ export async function getConversationsAction(): Promise<ActionResult<Conversatio
             designation: emp.designation,
             role: p.role,
             canSendMessages: p.canSendMessages ?? true,
+            avatarUrl: emp.avatarUrl || null,
             lastReadAt: p.lastReadAt ? p.lastReadAt.toISOString() : null,
             isOnline: isUserOnline,
             lastSeen: emp.lastSeen ? emp.lastSeen.toISOString() : null,
@@ -242,7 +247,7 @@ export async function getConversationsAction(): Promise<ActionResult<Conversatio
           id: conv.id,
           isGroup: conv.isGroup,
           name: title,
-          avatarUrl: conv.avatarUrl,
+          avatarUrl: conv.isGroup ? conv.avatarUrl : (other?.avatarUrl || null),
           sendMessagePermission: conv.sendMessagePermission || "ALL_MEMBERS",
           subtitle,
           unreadCount,
@@ -464,6 +469,7 @@ export async function getMessagesAction(
             lastName: true,
             department: true,
             designation: true,
+            avatarUrl: true,
           },
         },
         reactions: {
@@ -554,6 +560,7 @@ export async function getMessagesAction(
         senderId: m.senderId,
         senderName: `${first} ${last}`.trim(),
         senderInitials: initials,
+        senderAvatarUrl: m.sender?.avatarUrl || null,
         senderDepartment: m.sender?.department,
         content: m.content,
         messageType: m.messageType,
@@ -711,6 +718,7 @@ export async function sendMessageAction(data: {
               lastName: true,
               department: true,
               designation: true,
+              avatarUrl: true,
             },
           },
         },
@@ -798,6 +806,7 @@ export async function sendMessageAction(data: {
       senderId: message.senderId,
       senderName: `${first} ${last}`.trim(),
       senderInitials: `${first.charAt(0)}${last.charAt(0)}`.toUpperCase(),
+      senderAvatarUrl: message.sender?.avatarUrl || null,
       senderDepartment: message.sender?.department,
       content: message.content,
       messageType: message.messageType,
@@ -827,7 +836,7 @@ export async function sendMessageAction(data: {
  */
 export async function searchEmployeesForChatAction(
   query: string
-): Promise<ActionResult<{ id: string; name: string; email: string; department: string; designation: string }[]>> {
+): Promise<ActionResult<{ id: string; name: string; email: string; department: string; designation: string; avatarUrl?: string | null }[]>> {
   try {
     const user = await getCurrentUser();
     if (!user) {
@@ -864,6 +873,7 @@ export async function searchEmployeesForChatAction(
         isOnline: true,
         lastSeen: true,
         lastActiveAt: true,
+        avatarUrl: true,
         attendances: {
           where: { date: todayDate },
           select: { currentStatus: true },
@@ -889,6 +899,7 @@ export async function searchEmployeesForChatAction(
         email: e.workEmail,
         department: e.department,
         designation: e.designation,
+        avatarUrl: e.avatarUrl || null,
         isOnline:
           e.isOnline &&
           isTimerRunning &&

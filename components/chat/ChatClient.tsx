@@ -564,6 +564,15 @@ export function ChatClient({
     setShowMobileChat(false);
   };
 
+  // Handle group avatar update
+  const handleUpdateGroupAvatar = (newAvatarUrl: string | null) => {
+    if (!activeId) return;
+    setConversations((prev) =>
+      prev.map((c) => (c.id === activeId ? { ...c, avatarUrl: newAvatarUrl } : c))
+    );
+    fetchMessages(activeId, false);
+  };
+
   return (
     <div className="relative h-full w-full rounded-[24px] sm:rounded-[28px] lg:rounded-[32px] bg-white/75 backdrop-blur-2xl border border-white/80 shadow-[0_12px_40px_rgba(0,0,0,0.03)] overflow-hidden flex flex-row min-h-0">
       {/* Ambient background blur */}
@@ -631,6 +640,7 @@ export function ChatClient({
           onClose={() => setInfoDrawerOpen(false)}
           conversationName={activeConversation.name}
           isGroup={activeConversation.isGroup}
+          avatarUrl={activeConversation.avatarUrl}
           sendMessagePermission={activeConversation.sendMessagePermission}
           participants={activeConversation.participants}
           currentUserId={currentUserId}
@@ -638,6 +648,7 @@ export function ChatClient({
           onLeaveGroup={handleLeaveGroup}
           onUpdateGroupPermission={handleUpdateGroupPermission}
           onUpdateMemberPermission={handleUpdateMemberPermission}
+          onUpdateGroupAvatar={handleUpdateGroupAvatar}
         />
       )}
     </div>

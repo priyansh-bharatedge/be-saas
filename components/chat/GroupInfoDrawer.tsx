@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useRef, useEffect } from "react";
 import {
   X,
   Users,
@@ -13,6 +13,9 @@ import {
   MessageSquare,
   MessageSquareOff,
   Lock,
+  Camera,
+  Trash2,
+  Upload,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { ChatParticipantInfo } from "@/lib/actions/chat";
@@ -23,6 +26,7 @@ interface GroupInfoDrawerProps {
   onClose: () => void;
   conversationName: string;
   isGroup: boolean;
+  avatarUrl?: string | null;
   sendMessagePermission?: "ALL_MEMBERS" | "ONLY_ADMINS";
   participants: ChatParticipantInfo[];
   currentUserId: string;
@@ -30,6 +34,7 @@ interface GroupInfoDrawerProps {
   onLeaveGroup: () => void;
   onUpdateGroupPermission?: (permission: "ALL_MEMBERS" | "ONLY_ADMINS") => Promise<void>;
   onUpdateMemberPermission?: (employeeId: string, canSendMessages: boolean) => Promise<void>;
+  onUpdateGroupAvatar?: (newAvatarUrl: string | null) => void;
 }
 
 export function GroupInfoDrawer({
@@ -37,6 +42,7 @@ export function GroupInfoDrawer({
   onClose,
   conversationName,
   isGroup,
+  avatarUrl,
   sendMessagePermission = "ALL_MEMBERS",
   participants,
   currentUserId,
@@ -44,16 +50,93 @@ export function GroupInfoDrawer({
   onLeaveGroup,
   onUpdateGroupPermission,
   onUpdateMemberPermission,
+  onUpdateGroupAvatar,
 }: GroupInfoDrawerProps) {
   const [isLeaving, setIsLeaving] = useState(false);
   const [isUpdatingGroupPerm, setIsUpdatingGroupPerm] = useState(false);
   const [updatingMemberId, setUpdatingMemberId] = useState<string | null>(null);
+  const [groupAvatar, setGroupAvatar] = useState<string | null | undefined>(avatarUrl);
+  const [isUploadingAvatar, setIsUploadingAvatar] = useState(false);
+  const [avatarError, setAvatarError] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    setGroupAvatar(avatarUrl);
+  }, [avatarUrl]);
 
   if (!isOpen) return null;
 
   const isCurrentUserAdmin = participants.some(
     (p) => p.employeeId === currentUserId && p.role === "ADMIN"
   );
+
+  const handleAvatarFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setAvatarError(null);
+
+    // Validate size (max 5 MB)
+    if (file.size > 5 * 1024 * 1024) {
+      setAvatarError("Image size exceeds the 5 MB limit. Please select a smaller photo.");
+      return;
+    }
+
+    // Validate MIME type
+    const validTypes = ["image/jpeg", "image/png", "image/webp"];
+    if (!validTypes.includes(file.type.toLowerCase())) {
+      setAvatarError("Invalid format. Allowed: JPEG, PNG, WebP.");
+      return;
+    }
+
+    setIsUploadingAvatar(true);
+    try {
+      const formData = new FormData();
+      formData.append("file", file);
+
+      const res = await fetch(`/api/chat/conversations/${conversationId}/avatar`, {
+        method: "POST",
+        body: formData,
+      });
+
+      const data = await res.json();
+      if (!res.ok || !data.success) {
+        throw new Error(data.error || "Failed to upload group icon.");
+      }
+
+      setGroupAvatar(data.avatarUrl);
+      if (onUpdateGroupAvatar) onUpdateGroupAvatar(data.avatarUrl);
+    } catch (err: unknown) {
+      setAvatarError(err instanceof Error ? err.message : "Failed to upload group photo.");
+    } finally {
+      setIsUploadingAvatar(false);
+      if (fileInputRef.current) fileInputRef.current.value = "";
+    }
+  };
+
+  const handleRemoveGroupAvatar = async () => {
+    if (!confirm("Are you sure you want to remove the group's profile photo?")) return;
+
+    setIsUploadingAvatar(true);
+    setAvatarError(null);
+    try {
+      const res = await fetch(`/api/chat/conversations/${conversationId}/avatar`, {
+        method: "DELETE",
+      });
+
+      const data = await res.json();
+      if (!res.ok || !data.success) {
+        throw new Error(data.error || "Failed to remove group icon.");
+      }
+
+      setGroupAvatar(null);
+      if (onUpdateGroupAvatar) onUpdateGroupAvatar(null);
+    } catch (err: unknown) {
+      setAvatarError(err instanceof Error ? err.message : "Failed to remove group photo.");
+    } finally {
+      setIsUploadingAvatar(false);
+    }
+  };
 
   const handleLeave = async () => {
     if (!confirm("Are you sure you want to leave this group?")) return;
@@ -144,6 +227,77 @@ export function GroupInfoDrawer({
 
         {/* Content Body */}
         <div className="flex-1 overflow-y-auto p-5 space-y-6">
+          {/* Group Profile Photo Showcase (Admin Editable) */}
+          {isGroup && (
+            <div className="flex flex-col items-center justify-center p-4 rounded-2xl bg-slate-50/70 border border-slate-200/60 text-center space-y-3">
+              <div className="relative group/avatar">
+                <div className="w-20 h-20 rounded-3xl bg-gradient-to-br from-[#ACCAD5] to-[#7EA9B8] text-white flex items-center justify-center font-bold text-2xl shadow-md border-2 border-white overflow-hidden">
+                  {groupAvatar ? (
+                    <img
+                      src={groupAvatar}
+                      alt={conversationName}
+                      className="w-full h-full object-cover"
+                    />
+                  ) : (
+                    <Users className="h-9 w-9 text-white" />
+                  )}
+                </div>
+
+                {/* Admin Camera Overlay Button */}
+                {isCurrentUserAdmin && (
+                  <button
+                    type="button"
+                    onClick={() => fileInputRef.current?.click()}
+                    disabled={isUploadingAvatar}
+                    className="absolute -bottom-1 -right-1 p-2 rounded-xl bg-white text-slate-700 hover:text-[#C66318] hover:bg-slate-50 border border-slate-200 shadow-md transition-all cursor-pointer"
+                    title="Upload / Change Group Profile Photo"
+                  >
+                    {isUploadingAvatar ? (
+                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                    ) : (
+                      <Camera className="h-3.5 w-3.5" />
+                    )}
+                  </button>
+                )}
+              </div>
+
+              <div>
+                <h4 className="text-xs font-bold text-slate-800">{conversationName}</h4>
+                <p className="text-[11px] text-slate-400">
+                  {isCurrentUserAdmin
+                    ? "Click camera to update group photo (JPEG, PNG, WebP)"
+                    : "Group icon managed by group admins"}
+                </p>
+              </div>
+
+              {isCurrentUserAdmin && groupAvatar && (
+                <button
+                  type="button"
+                  onClick={handleRemoveGroupAvatar}
+                  disabled={isUploadingAvatar}
+                  className="text-[11px] text-rose-600 hover:text-rose-700 hover:underline inline-flex items-center gap-1 font-semibold cursor-pointer"
+                >
+                  <Trash2 className="h-3 w-3" />
+                  <span>Remove photo</span>
+                </button>
+              )}
+
+              {avatarError && (
+                <div className="w-full p-2 rounded-lg bg-rose-50 border border-rose-200 text-rose-700 text-[11px]">
+                  {avatarError}
+                </div>
+              )}
+
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="image/jpeg,image/png,image/webp"
+                className="hidden"
+                onChange={handleAvatarFileChange}
+              />
+            </div>
+          )}
+
           {/* Admin Group Messaging Permissions Control */}
           {isGroup && isCurrentUserAdmin && (
             <div className="p-4 rounded-2xl bg-gradient-to-br from-[#EBF3F6]/50 via-white to-slate-50 border border-[#ACCAD5]/50 shadow-xs space-y-3">
@@ -224,8 +378,16 @@ export function GroupInfoDrawer({
                   >
                     <div className="flex items-center gap-2.5 min-w-0 flex-1">
                       <div className="relative shrink-0">
-                        <div className="w-8 h-8 rounded-full bg-gradient-to-br from-[#ACCAD5] to-[#F0944D] text-white flex items-center justify-center font-bold text-xs">
-                          {p.name.charAt(0)}
+                        <div className="w-8 h-8 rounded-full bg-gradient-to-br from-[#ACCAD5] to-[#F0944D] text-white flex items-center justify-center font-bold text-xs overflow-hidden border border-white">
+                          {p.avatarUrl ? (
+                            <img
+                              src={p.avatarUrl}
+                              alt={p.name}
+                              className="w-full h-full object-cover"
+                            />
+                          ) : (
+                            p.name.charAt(0)
+                          )}
                         </div>
                         {p.isOnline && (
                           <span

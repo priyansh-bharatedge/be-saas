@@ -273,6 +273,7 @@ export async function getAdminMessagesAction(
             lastName: true,
             department: true,
             designation: true,
+            avatarUrl: true,
           },
         },
         reactions: {
@@ -348,6 +349,7 @@ export async function getAdminMessagesAction(
         senderId: m.senderId,
         senderName: `${first} ${last}`.trim(),
         senderInitials: initials,
+        senderAvatarUrl: m.sender?.avatarUrl || null,
         senderDepartment: m.sender?.department,
         content: m.isDeleted ? "[Deleted by sender]" : m.content,
         messageType: m.messageType,

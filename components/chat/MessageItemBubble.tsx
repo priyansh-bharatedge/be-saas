@@ -110,6 +110,7 @@ export function MessageItemBubble({
       message.content.includes("left the group") ||
       message.content.includes("restricted ") ||
       message.content.includes("allowed ") ||
+      message.content.includes("group's icon") ||
       message.content.includes("was created"));
 
   return (
@@ -139,8 +140,16 @@ export function MessageItemBubble({
         >
           {/* Other participant avatar (for received messages in group chats) */}
           {!message.isSelf && isGroup && (
-            <div className="w-7 h-7 rounded-full bg-gradient-to-br from-[#ACCAD5] to-[#F0944D] text-white flex items-center justify-center text-[10px] font-bold shrink-0 mb-1 shadow-2xs">
-              {message.senderInitials}
+            <div className="w-7 h-7 rounded-full bg-gradient-to-br from-[#ACCAD5] to-[#F0944D] text-white flex items-center justify-center text-[10px] font-bold shrink-0 mb-1 shadow-2xs overflow-hidden">
+              {message.senderAvatarUrl ? (
+                <img
+                  src={message.senderAvatarUrl}
+                  alt={message.senderName}
+                  className="w-full h-full object-cover"
+                />
+              ) : (
+                message.senderInitials
+              )}
             </div>
           )}
 

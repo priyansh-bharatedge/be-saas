@@ -35,6 +35,7 @@ import {
 import { cn } from "@/lib/utils";
 import { AuthUser } from "@/lib/auth/session";
 import { logoutAction } from "@/lib/auth/actions";
+import { UserProfilePhotoModal } from "@/components/profile/UserProfilePhotoModal";
 
 interface SidebarProps {
   user?: AuthUser | null;
@@ -56,6 +57,14 @@ interface NavSection {
 export function Sidebar({ user }: SidebarProps) {
   const pathname = usePathname();
   const [isCollapsed, setIsCollapsed] = useState(false);
+  const [isProfileModalOpen, setIsProfileModalOpen] = useState(false);
+  const [avatarUrl, setAvatarUrl] = useState<string | null | undefined>(user?.avatarUrl);
+
+  useEffect(() => {
+    if (user?.avatarUrl !== undefined) {
+      setAvatarUrl(user.avatarUrl);
+    }
+  }, [user?.avatarUrl]);
 
   // Restore collapsed state preference from localStorage on mount
   useEffect(() => {
@@ -530,12 +539,24 @@ export function Sidebar({ user }: SidebarProps) {
             </h4>
 
             <div className="flex items-center justify-between p-1.5 rounded-2xl bg-white/70 border border-slate-200/60 shadow-2xs">
-              <div className="flex items-center gap-2.5 min-w-0">
-                <div className="h-8 w-8 rounded-full bg-gradient-to-br from-[#ACCAD5] to-[#F0944D] text-white flex items-center justify-center font-bold text-xs shrink-0 shadow-2xs">
-                  {initial}
+              <div
+                onClick={() => setIsProfileModalOpen(true)}
+                className="flex items-center gap-2.5 min-w-0 cursor-pointer hover:opacity-90 group/user flex-1"
+                title="Click to update profile photo"
+              >
+                <div className="h-8 w-8 rounded-full bg-gradient-to-br from-[#ACCAD5] to-[#F0944D] text-white flex items-center justify-center font-bold text-xs shrink-0 shadow-2xs overflow-hidden border border-white">
+                  {avatarUrl ? (
+                    <img
+                      src={avatarUrl}
+                      alt={displayName}
+                      className="w-full h-full object-cover"
+                    />
+                  ) : (
+                    initial
+                  )}
                 </div>
                 <div className="min-w-0">
-                  <p className="font-bold text-slate-900 text-xs truncate leading-tight">
+                  <p className="font-bold text-slate-900 text-xs truncate leading-tight group-hover/user:text-[#C66318] transition-colors">
                     {displayName}
                   </p>
                   <p className="text-[10px] text-slate-400 truncate leading-tight">
@@ -548,7 +569,7 @@ export function Sidebar({ user }: SidebarProps) {
                 type="button"
                 onClick={handleLogout}
                 title="Sign out of session"
-                className="p-1.5 rounded-xl text-slate-400 hover:text-red-600 hover:bg-red-50 transition-colors cursor-pointer"
+                className="p-1.5 rounded-xl text-slate-400 hover:text-red-600 hover:bg-red-50 transition-colors cursor-pointer shrink-0"
               >
                 <LogOut className="h-3.5 w-3.5" />
               </button>
@@ -557,10 +578,19 @@ export function Sidebar({ user }: SidebarProps) {
         ) : (
           <>
             <div
-              title={`${displayName} (${displayRole})`}
-              className="h-9 w-9 rounded-full bg-gradient-to-br from-[#ACCAD5] to-[#F0944D] text-white flex items-center justify-center font-bold text-xs shadow-2xs cursor-pointer"
+              onClick={() => setIsProfileModalOpen(true)}
+              title={`${displayName} (${displayRole}) - Click to update photo`}
+              className="h-9 w-9 rounded-full bg-gradient-to-br from-[#ACCAD5] to-[#F0944D] text-white flex items-center justify-center font-bold text-xs shadow-2xs cursor-pointer overflow-hidden border border-white hover:scale-105 transition-transform"
             >
-              {initial}
+              {avatarUrl ? (
+                <img
+                  src={avatarUrl}
+                  alt={displayName}
+                  className="w-full h-full object-cover"
+                />
+              ) : (
+                initial
+              )}
             </div>
             <button
               type="button"
@@ -573,6 +603,14 @@ export function Sidebar({ user }: SidebarProps) {
           </>
         )}
       </div>
+
+      {/* User Profile Photo Upload Modal */}
+      <UserProfilePhotoModal
+        isOpen={isProfileModalOpen}
+        onClose={() => setIsProfileModalOpen(false)}
+        user={user ? { ...user, avatarUrl: avatarUrl || undefined } : null}
+        onAvatarUpdated={(url) => setAvatarUrl(url)}
+      />
     </aside>
   );
 }

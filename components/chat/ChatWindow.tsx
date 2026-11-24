@@ -130,13 +130,21 @@ export function ChatWindow({
           {/* Avatar with WhatsApp Online Badge */}
           <div className="relative shrink-0">
             <div
-              className={`w-10 h-10 rounded-2xl flex items-center justify-center text-xs font-bold shadow-2xs ${
-                conversation.isGroup
+              className={`w-10 h-10 rounded-2xl flex items-center justify-center text-xs font-bold shadow-2xs overflow-hidden ${
+                conversation.avatarUrl
+                  ? "border border-slate-200/80 bg-slate-100"
+                  : conversation.isGroup
                   ? "bg-gradient-to-br from-[#ACCAD5] to-[#7EA9B8] text-white"
                   : "bg-gradient-to-br from-[#FDEFE6] to-[#F7BA8C] text-[#C66318]"
               }`}
             >
-              {conversation.isGroup ? (
+              {conversation.avatarUrl ? (
+                <img
+                  src={conversation.avatarUrl}
+                  alt={conversation.name}
+                  className="w-full h-full object-cover"
+                />
+              ) : conversation.isGroup ? (
                 <Users className="h-5 w-5" />
               ) : (
                 conversation.name.charAt(0).toUpperCase()

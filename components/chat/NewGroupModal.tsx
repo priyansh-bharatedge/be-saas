@@ -11,6 +11,7 @@ interface Colleague {
   email: string;
   department: string;
   designation: string;
+  avatarUrl?: string | null;
 }
 
 interface NewGroupModalProps {
@@ -206,8 +207,16 @@ export function NewGroupModal({ isOpen, onClose, onGroupCreated }: NewGroupModal
                       }`}
                     >
                       <div className="flex items-center gap-2.5">
-                        <div className="w-8 h-8 rounded-full bg-gradient-to-br from-[#ACCAD5] to-[#F0944D] text-white flex items-center justify-center font-bold text-xs shrink-0">
-                          {colleague.name.charAt(0)}
+                        <div className="w-8 h-8 rounded-full bg-gradient-to-br from-[#ACCAD5] to-[#F0944D] text-white flex items-center justify-center font-bold text-xs shrink-0 overflow-hidden border border-white">
+                          {colleague.avatarUrl ? (
+                            <img
+                              src={colleague.avatarUrl}
+                              alt={colleague.name}
+                              className="w-full h-full object-cover"
+                            />
+                          ) : (
+                            colleague.name.charAt(0)
+                          )}
                         </div>
                         <div>
                           <div className="text-xs font-semibold text-slate-900">
