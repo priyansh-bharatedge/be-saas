@@ -371,6 +371,66 @@ export function ChatClient({
     }
   };
 
+  // Handle updating group messaging permission (Only Admins / All Members)
+  const handleUpdateGroupPermission = async (perm: "ALL_MEMBERS" | "ONLY_ADMINS") => {
+    if (!activeId) return;
+    try {
+      const res = await fetch("/api/chat/permissions", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ type: "group", conversationId: activeId, permission: perm }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        setConversations((prev) =>
+          prev.map((c) =>
+            c.id === activeId ? { ...c, sendMessagePermission: perm } : c
+          )
+        );
+        fetchMessages(activeId, false);
+      }
+    } catch (err) {
+      console.error("Failed to update group permission:", err);
+    }
+  };
+
+  // Handle restricting / allowing individual member messaging
+  const handleUpdateMemberPermission = async (
+    employeeId: string,
+    canSendMessages: boolean
+  ) => {
+    if (!activeId) return;
+    try {
+      const res = await fetch("/api/chat/permissions", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          type: "member",
+          conversationId: activeId,
+          employeeId,
+          canSendMessages,
+        }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        setConversations((prev) =>
+          prev.map((c) => {
+            if (c.id !== activeId) return c;
+            return {
+              ...c,
+              participants: c.participants.map((p) =>
+                p.employeeId === employeeId ? { ...p, canSendMessages } : p
+              ),
+            };
+          })
+        );
+        fetchMessages(activeId, false);
+      }
+    } catch (err) {
+      console.error("Failed to update member permission:", err);
+    }
+  };
+
   return (
     <div className="relative h-full w-full rounded-[24px] sm:rounded-[28px] lg:rounded-[32px] bg-white/75 backdrop-blur-2xl border border-white/80 shadow-[0_12px_40px_rgba(0,0,0,0.03)] overflow-hidden flex flex-row min-h-0">
       {/* Ambient background blur */}
@@ -425,10 +485,13 @@ export function ChatClient({
           onClose={() => setInfoDrawerOpen(false)}
           conversationName={activeConversation.name}
           isGroup={activeConversation.isGroup}
+          sendMessagePermission={activeConversation.sendMessagePermission}
           participants={activeConversation.participants}
           currentUserId={currentUserId}
           conversationId={activeConversation.id}
           onLeaveGroup={handleLeaveGroup}
+          onUpdateGroupPermission={handleUpdateGroupPermission}
+          onUpdateMemberPermission={handleUpdateMemberPermission}
         />
       )}
     </div>

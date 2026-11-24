@@ -3,7 +3,12 @@
 import { revalidatePath } from "next/cache";
 import { db } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth/session";
-import { ChatMessageType, ChatParticipantRole, TrackerStatus } from "@prisma/client";
+import {
+  ChatMessageType,
+  ChatParticipantRole,
+  TrackerStatus,
+  GroupSendMessagePermission,
+} from "@prisma/client";
 
 export interface ActionResult<T = unknown> {
   success: boolean;
@@ -20,6 +25,7 @@ export interface ChatParticipantInfo {
   designation: string;
   profilePic?: string | null;
   role: ChatParticipantRole;
+  canSendMessages: boolean;
   lastReadAt: string | null;
   isOnline: boolean;
   lastSeen: string | null;
@@ -38,6 +44,7 @@ export interface ConversationSummary {
   isGroup: boolean;
   name: string;
   avatarUrl?: string | null;
+  sendMessagePermission?: GroupSendMessagePermission;
   subtitle: string; // Other participant's department or "Group (X members)"
   lastMessage?: {
     id: string;
@@ -204,6 +211,7 @@ export async function getConversationsAction(): Promise<ActionResult<Conversatio
             department: emp.department,
             designation: emp.designation,
             role: p.role,
+            canSendMessages: p.canSendMessages ?? true,
             lastReadAt: p.lastReadAt ? p.lastReadAt.toISOString() : null,
             isOnline: isUserOnline,
             lastSeen: emp.lastSeen ? emp.lastSeen.toISOString() : null,
@@ -234,6 +242,7 @@ export async function getConversationsAction(): Promise<ActionResult<Conversatio
           isGroup: conv.isGroup,
           name: title,
           avatarUrl: conv.avatarUrl,
+          sendMessagePermission: conv.sendMessagePermission || "ALL_MEMBERS",
           subtitle,
           unreadCount,
           updatedAt: conv.updatedAt.toISOString(),
@@ -621,6 +630,41 @@ export async function sendMessageAction(data: {
 
     // 403 Security Check
     await assertConversationMembership(conversationId, user.id);
+
+    // Group-level & member-level messaging permissions enforcement
+    const conv = await db.chatConversation.findUnique({
+      where: { id: conversationId },
+      select: { isGroup: true, sendMessagePermission: true },
+    });
+
+    if (conv?.isGroup) {
+      const participant = await db.chatParticipant.findUnique({
+        where: {
+          conversationId_employeeId: {
+            conversationId,
+            employeeId: user.id,
+          },
+        },
+        select: { role: true, canSendMessages: true },
+      });
+
+      if (
+        conv.sendMessagePermission === GroupSendMessagePermission.ONLY_ADMINS &&
+        participant?.role !== ChatParticipantRole.ADMIN
+      ) {
+        return {
+          success: false,
+          error: "Only admins are allowed to send messages in this group.",
+        };
+      }
+
+      if (participant?.canSendMessages === false) {
+        return {
+          success: false,
+          error: "You are restricted from sending messages in this group.",
+        };
+      }
+    }
 
     const textContent = content?.trim() || null;
     if (!textContent && !attachmentUrl && (!attachments || attachments.length === 0)) {
@@ -1258,4 +1302,173 @@ export async function toggleMessageReactionAction({
     };
   }
 }
+
+/**
+ * Updates the group-level message sending permission ('ALL_MEMBERS' | 'ONLY_ADMINS').
+ * Enforces that only group ADMINs can change this setting.
+ * Automatically logs a system notice in the chat timeline.
+ */
+export async function updateGroupSendMessagePermissionAction({
+  conversationId,
+  permission,
+}: {
+  conversationId: string;
+  permission: GroupSendMessagePermission;
+}): Promise<ActionResult<{ permission: GroupSendMessagePermission }>> {
+  try {
+    const user = await getCurrentUser();
+    if (!user) {
+      return { success: false, error: "Unauthorized. Please log in." };
+    }
+
+    const membership = await db.chatParticipant.findUnique({
+      where: {
+        conversationId_employeeId: {
+          conversationId,
+          employeeId: user.id,
+        },
+      },
+      include: {
+        conversation: { select: { isGroup: true, name: true } },
+      },
+    });
+
+    if (!membership || !membership.conversation.isGroup) {
+      return { success: false, error: "Conversation not found or not a group." };
+    }
+
+    if (membership.role !== ChatParticipantRole.ADMIN) {
+      return { success: false, error: "Forbidden: Only group admins can change messaging permissions." };
+    }
+
+    await db.chatConversation.update({
+      where: { id: conversationId },
+      data: { sendMessagePermission: permission },
+    });
+
+    const adminName = user.name?.trim() || "An admin";
+    const systemNotice =
+      permission === GroupSendMessagePermission.ONLY_ADMINS
+        ? `${adminName} changed this group's settings to allow only admins to send messages.`
+        : `${adminName} changed this group's settings to allow all members to send messages.`;
+
+    await db.chatMessage.create({
+      data: {
+        conversationId,
+        senderId: user.id,
+        content: systemNotice,
+        messageType: ChatMessageType.TEXT,
+      },
+    });
+
+    revalidatePath("/chat");
+    return { success: true, data: { permission } };
+  } catch (error) {
+    console.error("Error updating group messaging permission:", error);
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : "Failed to update group permissions.",
+    };
+  }
+}
+
+/**
+ * Updates an individual member's messaging permission in a group.
+ * Enforces that only group ADMINs can mute/allow members.
+ * Automatically logs a system notice in the chat timeline.
+ */
+export async function updateMemberMessagingPermissionAction({
+  conversationId,
+  employeeId,
+  canSendMessages,
+}: {
+  conversationId: string;
+  employeeId: string;
+  canSendMessages: boolean;
+}): Promise<ActionResult<{ canSendMessages: boolean }>> {
+  try {
+    const user = await getCurrentUser();
+    if (!user) {
+      return { success: false, error: "Unauthorized. Please log in." };
+    }
+
+    const adminMembership = await db.chatParticipant.findUnique({
+      where: {
+        conversationId_employeeId: {
+          conversationId,
+          employeeId: user.id,
+        },
+      },
+      include: {
+        conversation: { select: { isGroup: true } },
+      },
+    });
+
+    if (!adminMembership || !adminMembership.conversation.isGroup) {
+      return { success: false, error: "Conversation not found or not a group." };
+    }
+
+    if (adminMembership.role !== ChatParticipantRole.ADMIN) {
+      return { success: false, error: "Forbidden: Only group admins can change member permissions." };
+    }
+
+    const targetParticipant = await db.chatParticipant.findUnique({
+      where: {
+        conversationId_employeeId: {
+          conversationId,
+          employeeId,
+        },
+      },
+      include: {
+        employee: { select: { firstName: true, lastName: true } },
+      },
+    });
+
+    if (!targetParticipant) {
+      return { success: false, error: "Target group member was not found." };
+    }
+
+    if (targetParticipant.role === ChatParticipantRole.ADMIN && !canSendMessages) {
+      return { success: false, error: "Cannot restrict an admin from sending messages." };
+    }
+
+    await db.chatParticipant.update({
+      where: {
+        conversationId_employeeId: {
+          conversationId,
+          employeeId,
+        },
+      },
+      data: { canSendMessages },
+    });
+
+    const adminName = user.name?.trim() || "An admin";
+    const targetName =
+      `${targetParticipant.employee.firstName || ""} ${targetParticipant.employee.lastName || ""}`.trim() ||
+      "A member";
+
+    const systemNotice = canSendMessages
+      ? `${adminName} allowed ${targetName} to send messages.`
+      : `${adminName} restricted ${targetName} from sending messages in this group.`;
+
+    await db.chatMessage.create({
+      data: {
+        conversationId,
+        senderId: user.id,
+        content: systemNotice,
+        messageType: ChatMessageType.TEXT,
+      },
+    });
+
+    revalidatePath("/chat");
+    return { success: true, data: { canSendMessages } };
+  } catch (error) {
+    console.error("Error updating member messaging permission:", error);
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : "Failed to update member permission.",
+    };
+  }
+}
+
 

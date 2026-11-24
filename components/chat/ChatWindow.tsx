@@ -39,6 +39,21 @@ export function ChatWindow({
 }: ChatWindowProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
 
+  // Determine if current user is restricted from sending messages in this conversation
+  const currentParticipant = conversation?.participants.find(
+    (p) => p.employeeId === currentUserId
+  );
+  const isCurrentUserAdmin = currentParticipant?.role === "ADMIN";
+
+  let restrictionNotice: string | null = null;
+  if (conversation?.isGroup) {
+    if (conversation.sendMessagePermission === "ONLY_ADMINS" && !isCurrentUserAdmin) {
+      restrictionNotice = "Only admins can send messages";
+    } else if (currentParticipant?.canSendMessages === false) {
+      restrictionNotice = "You are restricted from sending messages in this group";
+    }
+  }
+
   // Auto-scroll to bottom on new messages
   useEffect(() => {
     if (scrollRef.current) {
@@ -205,11 +220,18 @@ export function ChatWindow({
         )}
       </div>
 
-      {/* Sticky Message Composer (Permanently pinned at bottom) */}
-      <MessageComposer
-        conversationId={conversation.id}
-        onSendMessage={onSendMessage}
-      />
+      {/* Sticky Message Composer or WhatsApp-Style Restriction Notice */}
+      {restrictionNotice ? (
+        <div className="p-4 bg-slate-50/95 backdrop-blur-md border-t border-slate-200/80 flex items-center justify-center gap-2 text-xs text-slate-500 font-medium select-none shadow-xs">
+          <Lock className="h-4 w-4 text-slate-400 shrink-0" />
+          <span>{restrictionNotice}</span>
+        </div>
+      ) : (
+        <MessageComposer
+          conversationId={conversation.id}
+          onSendMessage={onSendMessage}
+        />
+      )}
     </div>
   );
 }

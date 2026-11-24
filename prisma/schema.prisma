@@ -1001,13 +1001,19 @@ enum ChatMessageType {
   FILE
 }
 
+enum GroupSendMessagePermission {
+  ALL_MEMBERS
+  ONLY_ADMINS
+}
+
 model ChatConversation {
-  id          String            @id @default(uuid())
-  isGroup     Boolean           @default(false)
-  name        String?
-  avatarUrl   String?
-  createdById String
-  createdBy   Employee          @relation("CreatedConversations", fields: [createdById], references: [id], onDelete: Cascade)
+  id                    String                     @id @default(uuid())
+  isGroup               Boolean                    @default(false)
+  name                  String?
+  avatarUrl             String?
+  createdById           String
+  createdBy             Employee                   @relation("CreatedConversations", fields: [createdById], references: [id], onDelete: Cascade)
+  sendMessagePermission GroupSendMessagePermission @default(ALL_MEMBERS)
   
   participants ChatParticipant[]
   messages     ChatMessage[]
@@ -1020,14 +1026,15 @@ model ChatConversation {
 }
 
 model ChatParticipant {
-  id             String              @id @default(uuid())
-  conversationId String
-  conversation   ChatConversation    @relation(fields: [conversationId], references: [id], onDelete: Cascade)
-  employeeId     String
-  employee       Employee            @relation("EmployeeChatParticipants", fields: [employeeId], references: [id], onDelete: Cascade)
-  role           ChatParticipantRole @default(MEMBER)
-  lastReadAt     DateTime?
-  joinedAt       DateTime            @default(now())
+  id              String              @id @default(uuid())
+  conversationId  String
+  conversation    ChatConversation    @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  employeeId      String
+  employee        Employee            @relation("EmployeeChatParticipants", fields: [employeeId], references: [id], onDelete: Cascade)
+  role            ChatParticipantRole @default(MEMBER)
+  canSendMessages Boolean             @default(true)
+  lastReadAt      DateTime?
+  joinedAt        DateTime            @default(now())
 
   @@unique([conversationId, employeeId])
   @@index([employeeId])
