@@ -41,9 +41,19 @@ export interface AuditConversationSummary {
 export interface AuditConversationsFilter {
   chatType?: "ALL" | "DMS" | "GROUPS";
   department?: string;
+  employeeId?: string;
   search?: string;
   limit?: number;
   cursor?: string;
+}
+
+export interface AuditStatsSummary {
+  totalConversations: number;
+  dmConversations: number;
+  groupConversations: number;
+  totalMessages: number;
+  totalEmployees: number;
+  departmentBreakdown: { department: string; count: number }[];
 }
 
 /**
@@ -59,7 +69,7 @@ export async function getAdminConversationsAction(
       return { success: false, error: "Forbidden: Super Admin access required." };
     }
 
-    const { chatType = "ALL", department, search, limit = 50 } = filter;
+    const { chatType = "ALL", department, employeeId, search, limit = 50 } = filter;
     const q = search?.trim().toLowerCase() || "";
 
     const whereClause: any = {};
@@ -70,15 +80,33 @@ export async function getAdminConversationsAction(
       whereClause.isGroup = false;
     }
 
+    const participantSomeConditions: any[] = [];
+
     if (department && department !== "ALL") {
+      participantSomeConditions.push({
+        employee: {
+          department: {
+            equals: department,
+            mode: "insensitive",
+          },
+        },
+      });
+    }
+
+    if (employeeId && employeeId !== "ALL") {
+      participantSomeConditions.push({
+        employeeId: employeeId,
+      });
+    }
+
+    if (participantSomeConditions.length === 1) {
+      whereClause.participants = {
+        some: participantSomeConditions[0],
+      };
+    } else if (participantSomeConditions.length > 1) {
       whereClause.participants = {
         some: {
-          employee: {
-            department: {
-              equals: department,
-              mode: "insensitive",
-            },
-          },
+          AND: participantSomeConditions,
         },
       };
     }
@@ -401,6 +429,65 @@ export async function getAvailableDepartmentsAction(): Promise<ActionResult<stri
     return {
       success: false,
       error: error instanceof Error ? error.message : "Failed to load departments.",
+    };
+  }
+}
+
+/**
+ * Super Admin action to fetch enterprise-wide chat statistics for oversight dashboard.
+ * Strictly gated by user.systemRole === 'SUPER_ADMIN'.
+ */
+export async function getAdminAuditStatsAction(): Promise<ActionResult<AuditStatsSummary>> {
+  try {
+    const user = await getCurrentUser();
+    if (!user || user.systemRole !== SystemRole.SUPER_ADMIN) {
+      return { success: false, error: "Forbidden: Super Admin access required." };
+    }
+
+    const [
+      totalConversations,
+      dmConversations,
+      groupConversations,
+      totalMessages,
+      totalEmployees,
+      departmentGroups,
+    ] = await Promise.all([
+      db.chatConversation.count(),
+      db.chatConversation.count({ where: { isGroup: false } }),
+      db.chatConversation.count({ where: { isGroup: true } }),
+      db.chatMessage.count(),
+      db.employee.count(),
+      db.employee.groupBy({
+        by: ["department"],
+        _count: { id: true },
+        where: { department: { not: "" } },
+      }),
+    ]);
+
+    const departmentBreakdown = departmentGroups
+      .map((g) => ({
+        department: g.department || "General",
+        count: g._count.id,
+      }))
+      .filter((d) => d.department.trim().length > 0)
+      .sort((a, b) => b.count - a.count);
+
+    return {
+      success: true,
+      data: {
+        totalConversations,
+        dmConversations,
+        groupConversations,
+        totalMessages,
+        totalEmployees,
+        departmentBreakdown,
+      },
+    };
+  } catch (error) {
+    console.error("Error in getAdminAuditStatsAction:", error);
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : "Failed to calculate audit stats.",
     };
   }
 }

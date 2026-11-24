@@ -158,7 +158,11 @@ export function ChatWindow({
               {conversation.name}
             </h3>
 
-            {conversation.isGroup ? (
+            {isOversightMode ? (
+              <p className="text-[11px] text-slate-500 truncate flex items-center gap-1.5">
+                <span className="font-medium text-[#588594]">{conversation.subtitle}</span>
+              </p>
+            ) : conversation.isGroup ? (
               <p className="text-[11px] text-slate-500 truncate">
                 {conversation.subtitle}
               </p>
