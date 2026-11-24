@@ -20,7 +20,14 @@ interface ConversationListProps {
   onSelect: (id: string) => void;
   onOpenNewGroup: () => void;
   onStartDM: (targetEmployeeId: string) => void;
-  colleagues: { id: string; name: string; department: string; designation: string }[];
+  colleagues: {
+    id: string;
+    name: string;
+    department: string;
+    designation: string;
+    isOnline?: boolean;
+    lastSeen?: string | null;
+  }[];
 }
 
 export function ConversationList({
@@ -142,11 +149,24 @@ export function ConversationList({
                 className="flex items-center justify-between p-2 rounded-xl bg-white border border-slate-200/70 hover:border-[#ACCAD5] hover:bg-[#EBF3F6]/50 transition-all cursor-pointer shadow-2xs"
               >
                 <div className="flex items-center gap-2">
-                  <div className="w-6 h-6 rounded-full bg-gradient-to-br from-[#ACCAD5] to-[#F0944D] text-white flex items-center justify-center font-bold text-[10px]">
-                    {col.name.charAt(0)}
+                  <div className="relative">
+                    <div className="w-6 h-6 rounded-full bg-gradient-to-br from-[#ACCAD5] to-[#F0944D] text-white flex items-center justify-center font-bold text-[10px]">
+                      {col.name.charAt(0)}
+                    </div>
+                    {col.isOnline && (
+                      <span
+                        className="absolute -bottom-0.5 -right-0.5 w-2 h-2 rounded-full bg-emerald-500 border border-white"
+                        title="Online"
+                      />
+                    )}
                   </div>
                   <div>
-                    <div className="text-xs font-semibold text-slate-900">{col.name}</div>
+                    <div className="text-xs font-semibold text-slate-900 flex items-center gap-1.5">
+                      <span>{col.name}</span>
+                      {col.isOnline && (
+                        <span className="text-[9px] text-emerald-600 font-medium">• online</span>
+                      )}
+                    </div>
                     <div className="text-[10px] text-slate-400">{col.department}</div>
                   </div>
                 </div>
@@ -185,15 +205,25 @@ export function ConversationList({
                     : "hover:bg-slate-50/80"
                 }`}
               >
-                {/* Avatar Icon */}
-                <div
-                  className={`w-10 h-10 rounded-2xl flex items-center justify-center text-xs font-bold shrink-0 shadow-2xs transition-transform ${
-                    conv.isGroup
-                      ? "bg-gradient-to-br from-[#ACCAD5] to-[#7EA9B8] text-white border border-white"
-                      : "bg-gradient-to-br from-[#FDEFE6] to-[#F7BA8C] text-[#C66318] border border-[#F0944D]/30"
-                  }`}
-                >
-                  {conv.isGroup ? <Users className="h-5 w-5" /> : initial}
+                {/* Avatar Icon with Online Badge */}
+                <div className="relative shrink-0">
+                  <div
+                    className={`w-10 h-10 rounded-2xl flex items-center justify-center text-xs font-bold shadow-2xs transition-transform ${
+                      conv.isGroup
+                        ? "bg-gradient-to-br from-[#ACCAD5] to-[#7EA9B8] text-white border border-white"
+                        : "bg-gradient-to-br from-[#FDEFE6] to-[#F7BA8C] text-[#C66318] border border-[#F0944D]/30"
+                    }`}
+                  >
+                    {conv.isGroup ? <Users className="h-5 w-5" /> : initial}
+                  </div>
+
+                  {/* Green Online Dot for 1-on-1 */}
+                  {!conv.isGroup && (conv.otherParticipant?.isOnline || conv.isOnline) && (
+                    <span
+                      className="absolute -bottom-0.5 -right-0.5 w-3 h-3 rounded-full bg-emerald-500 border-2 border-white shadow-2xs"
+                      title="Online"
+                    />
+                  )}
                 </div>
 
                 {/* Details */}

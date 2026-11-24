@@ -820,6 +820,11 @@ model Employee {
   chatParticipants     ChatParticipant[]  @relation("EmployeeChatParticipants")
   sentChatMessages     ChatMessage[]      @relation("SentChatMessages")
 
+  // Real-time Online & Last Seen Presence Tracking
+  isOnline     Boolean   @default(false)
+  lastSeen     DateTime?
+  lastActiveAt DateTime?
+
   // CRM Module Relations
   createdCompanies      Company[]           @relation("CreatedCompanies")
   createdClients        Client[]            @relation("CreatedClients")

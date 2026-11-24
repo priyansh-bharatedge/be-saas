@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { MessageItem, ConversationSummary } from "@/lib/actions/chat";
 import { MessageItemBubble } from "./MessageItemBubble";
 import { MessageComposer, StagedAttachment } from "./MessageComposer";
+import { formatWhatsAppLastSeen } from "@/lib/chat/presence";
 
 interface ChatWindowProps {
   conversation: ConversationSummary | null;
@@ -107,29 +108,54 @@ export function ChatWindow({
             <ArrowLeft className="h-4 w-4" />
           </Button>
 
-          {/* Avatar */}
-          <div
-            className={`w-10 h-10 rounded-2xl flex items-center justify-center text-xs font-bold shrink-0 shadow-2xs ${
-              conversation.isGroup
-                ? "bg-gradient-to-br from-[#ACCAD5] to-[#7EA9B8] text-white"
-                : "bg-gradient-to-br from-[#FDEFE6] to-[#F7BA8C] text-[#C66318]"
-            }`}
-          >
-            {conversation.isGroup ? (
-              <Users className="h-5 w-5" />
-            ) : (
-              conversation.name.charAt(0).toUpperCase()
+          {/* Avatar with WhatsApp Online Badge */}
+          <div className="relative shrink-0">
+            <div
+              className={`w-10 h-10 rounded-2xl flex items-center justify-center text-xs font-bold shadow-2xs ${
+                conversation.isGroup
+                  ? "bg-gradient-to-br from-[#ACCAD5] to-[#7EA9B8] text-white"
+                  : "bg-gradient-to-br from-[#FDEFE6] to-[#F7BA8C] text-[#C66318]"
+              }`}
+            >
+              {conversation.isGroup ? (
+                <Users className="h-5 w-5" />
+              ) : (
+                conversation.name.charAt(0).toUpperCase()
+              )}
+            </div>
+
+            {/* Green Online Dot for 1-on-1 */}
+            {!conversation.isGroup && conversation.otherParticipant?.isOnline && (
+              <span
+                className="absolute -bottom-0.5 -right-0.5 w-3 h-3 rounded-full bg-emerald-500 border-2 border-white shadow-2xs"
+                title="Online"
+              />
             )}
           </div>
 
-          {/* Title & Subtitle */}
+          {/* Title & WhatsApp-Style Online / Last Seen Status */}
           <div className="min-w-0">
             <h3 className="text-sm font-bold text-slate-900 truncate">
               {conversation.name}
             </h3>
-            <p className="text-[11px] text-slate-500 truncate">
-              {conversation.subtitle}
-            </p>
+
+            {conversation.isGroup ? (
+              <p className="text-[11px] text-slate-500 truncate">
+                {conversation.subtitle}
+              </p>
+            ) : conversation.otherParticipant?.isOnline ? (
+              <p className="text-[11px] text-emerald-600 font-medium flex items-center gap-1.5 animate-in fade-in">
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                <span>Online</span>
+              </p>
+            ) : (
+              <p className="text-[11px] text-slate-400 truncate">
+                {formatWhatsAppLastSeen(
+                  conversation.otherParticipant?.lastSeen,
+                  conversation.subtitle
+                )}
+              </p>
+            )}
           </div>
         </div>
 

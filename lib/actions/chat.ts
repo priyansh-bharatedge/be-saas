@@ -21,6 +21,8 @@ export interface ChatParticipantInfo {
   profilePic?: string | null;
   role: ChatParticipantRole;
   lastReadAt: string | null;
+  isOnline: boolean;
+  lastSeen: string | null;
 }
 
 export interface ChatAttachmentItem {
@@ -49,6 +51,9 @@ export interface ConversationSummary {
   updatedAt: string;
   participants: ChatParticipantInfo[];
   otherParticipant?: ChatParticipantInfo | null;
+  isOnline?: boolean;
+  lastSeen?: string | null;
+  onlineCount?: number;
 }
 
 export interface MessageItem {
@@ -117,6 +122,9 @@ export async function getConversationsAction(): Promise<ActionResult<Conversatio
                     department: true,
                     designation: true,
                     status: true,
+                    isOnline: true,
+                    lastSeen: true,
+                    lastActiveAt: true,
                   },
                 },
               },
@@ -141,7 +149,10 @@ export async function getConversationsAction(): Promise<ActionResult<Conversatio
       orderBy: { conversation: { updatedAt: "desc" } },
     });
 
-    // Compute unread counts in parallel
+    const ONLINE_THRESHOLD_MS = 60 * 1000; // 60 seconds
+    const nowMs = Date.now();
+
+    // Compute unread counts & online presence in parallel
     const summaries: ConversationSummary[] = await Promise.all(
       participantRecords.map(async (record) => {
         const conv = record.conversation;
@@ -156,25 +167,39 @@ export async function getConversationsAction(): Promise<ActionResult<Conversatio
           },
         });
 
-        const formattedParticipants: ChatParticipantInfo[] = conv.participants.map((p) => ({
-          id: p.id,
-          employeeId: p.employee.id,
-          name: `${p.employee.firstName} ${p.employee.lastName}`,
-          email: p.employee.workEmail,
-          department: p.employee.department,
-          designation: p.employee.designation,
-          role: p.role,
-          lastReadAt: p.lastReadAt ? p.lastReadAt.toISOString() : null,
-        }));
+        const formattedParticipants: ChatParticipantInfo[] = conv.participants.map((p) => {
+          const emp = p.employee;
+          const isUserOnline =
+            emp.isOnline &&
+            emp.lastActiveAt !== null &&
+            nowMs - new Date(emp.lastActiveAt).getTime() <= ONLINE_THRESHOLD_MS;
+
+          return {
+            id: p.id,
+            employeeId: emp.id,
+            name: `${emp.firstName} ${emp.lastName}`.trim(),
+            email: emp.workEmail,
+            department: emp.department,
+            designation: emp.designation,
+            role: p.role,
+            lastReadAt: p.lastReadAt ? p.lastReadAt.toISOString() : null,
+            isOnline: isUserOnline,
+            lastSeen: emp.lastSeen ? emp.lastSeen.toISOString() : null,
+          };
+        });
 
         const other = formattedParticipants.find((p) => p.employeeId !== user.id) || null;
+        const onlineCount = formattedParticipants.filter((p) => p.isOnline).length;
 
         let title = conv.name || "Chat";
         let subtitle = "";
 
         if (conv.isGroup) {
           title = conv.name || "Group Discussion";
-          subtitle = `${formattedParticipants.length} members`;
+          subtitle =
+            onlineCount > 0
+              ? `${formattedParticipants.length} members, ${onlineCount} online`
+              : `${formattedParticipants.length} members`;
         } else if (other) {
           title = other.name;
           subtitle = `${other.designation} • ${other.department}`;
@@ -192,6 +217,9 @@ export async function getConversationsAction(): Promise<ActionResult<Conversatio
           updatedAt: conv.updatedAt.toISOString(),
           participants: formattedParticipants,
           otherParticipant: other,
+          isOnline: other?.isOnline || false,
+          lastSeen: other?.lastSeen || null,
+          onlineCount,
           lastMessage: lastMsg
             ? {
                 id: lastMsg.id,
@@ -575,6 +603,14 @@ export async function sendMessageAction(data: {
         },
         data: { lastReadAt: now },
       }),
+      db.employee.update({
+        where: { id: user.id },
+        data: {
+          isOnline: true,
+          lastActiveAt: now,
+          lastSeen: now,
+        },
+      }),
     ]);
 
     const first = message.sender?.firstName || "U";
@@ -692,10 +728,16 @@ export async function searchEmployeesForChatAction(
         workEmail: true,
         department: true,
         designation: true,
+        isOnline: true,
+        lastSeen: true,
+        lastActiveAt: true,
       },
       take: 20,
       orderBy: { firstName: "asc" },
     });
+
+    const ONLINE_THRESHOLD_MS = 60 * 1000;
+    const nowMs = Date.now();
 
     const mapped = employees.map((e) => ({
       id: e.id,
@@ -703,6 +745,11 @@ export async function searchEmployeesForChatAction(
       email: e.workEmail,
       department: e.department,
       designation: e.designation,
+      isOnline:
+        e.isOnline &&
+        e.lastActiveAt !== null &&
+        nowMs - new Date(e.lastActiveAt).getTime() <= ONLINE_THRESHOLD_MS,
+      lastSeen: e.lastSeen ? e.lastSeen.toISOString() : null,
     }));
 
     return { success: true, data: mapped };
@@ -751,6 +798,17 @@ export async function leaveGroupAction(conversationId: string): Promise<ActionRe
     });
 
     revalidatePath("/chat");
+    // Also touch user presence
+    const now = new Date();
+    await db.employee.update({
+      where: { id: user.id },
+      data: {
+        isOnline: true,
+        lastActiveAt: now,
+        lastSeen: now,
+      },
+    });
+
     return { success: true, data: true };
   } catch (error) {
     console.error("Error leaving group:", error);
@@ -793,6 +851,17 @@ export async function markConversationAsReadAction(
       },
       data: {
         isRead: true,
+      },
+    });
+
+    // Also touch user presence
+    const now = new Date();
+    await db.employee.update({
+      where: { id: user.id },
+      data: {
+        isOnline: true,
+        lastActiveAt: now,
+        lastSeen: now,
       },
     });
 
@@ -845,5 +914,34 @@ export async function getUnreadChatCountAction(): Promise<
   } catch (error) {
     console.error("Error counting unread messages:", error);
     return { success: false, error: "Failed to count unread messages." };
+  }
+}
+
+/**
+ * Lightweight heartbeat action to track online presence and last seen
+ */
+export async function updatePresenceAction(
+  status: "online" | "offline" = "online"
+): Promise<ActionResult<{ isOnline: boolean }>> {
+  try {
+    const user = await getCurrentUser();
+    if (!user) {
+      return { success: false, error: "Unauthorized." };
+    }
+
+    const now = new Date();
+    await db.employee.update({
+      where: { id: user.id },
+      data: {
+        isOnline: status === "online",
+        lastActiveAt: now,
+        lastSeen: now,
+      },
+    });
+
+    return { success: true, data: { isOnline: status === "online" } };
+  } catch (error) {
+    console.error("Error updating presence:", error);
+    return { success: false, error: "Failed to update presence." };
   }
 }

@@ -19,17 +19,56 @@ export function TopBarChatIcon() {
     }
   }, []);
 
+  // Send lightweight online presence heartbeat
+  const pingPresence = useCallback(async (status: "online" | "offline" = "online") => {
+    try {
+      if (status === "offline" && typeof navigator !== "undefined" && navigator.sendBeacon) {
+        navigator.sendBeacon("/api/chat/presence", JSON.stringify({ status: "offline" }));
+      } else {
+        await fetch("/api/chat/presence", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ status }),
+          keepalive: status === "offline",
+        });
+      }
+    } catch {
+      // Ignore presence ping errors
+    }
+  }, []);
+
   useEffect(() => {
+    // 1. Initial unread check & initial presence heartbeat
     fetchUnread();
+    pingPresence("online");
 
-    // Poll every 8 seconds for live chat unread counts across all pages
-    const interval = setInterval(fetchUnread, 8000);
+    // 2. Poll unread messages every 8 seconds
+    const unreadInterval = setInterval(fetchUnread, 8000);
 
-    // Refresh immediately on window focus
-    const onFocus = () => fetchUnread();
+    // 3. Heartbeat presence ping every 25 seconds while active
+    const presenceInterval = setInterval(() => pingPresence("online"), 25000);
+
+    // 4. On tab focus / visibility change
+    const onFocus = () => {
+      fetchUnread();
+      pingPresence("online");
+    };
+    const onVisibilityChange = () => {
+      if (document.visibilityState === "visible") {
+        fetchUnread();
+        pingPresence("online");
+      }
+    };
     window.addEventListener("focus", onFocus);
+    document.addEventListener("visibilitychange", onVisibilityChange);
 
-    // Listen for custom immediate update event from ChatClient
+    // 5. On tab close / navigate away
+    const onBeforeUnload = () => {
+      pingPresence("offline");
+    };
+    window.addEventListener("beforeunload", onBeforeUnload);
+
+    // 6. Custom immediate update event from ChatClient
     const onChatUpdate = (e: CustomEvent<{ unreadCount?: number }>) => {
       if (typeof e.detail?.unreadCount === "number") {
         setUnreadCount(e.detail.unreadCount);
@@ -37,14 +76,23 @@ export function TopBarChatIcon() {
         fetchUnread();
       }
     };
-    window.addEventListener("chat:unread-updated" as unknown as keyof WindowEventMap, onChatUpdate as EventListener);
+    window.addEventListener(
+      "chat:unread-updated" as unknown as keyof WindowEventMap,
+      onChatUpdate as EventListener
+    );
 
     return () => {
-      clearInterval(interval);
+      clearInterval(unreadInterval);
+      clearInterval(presenceInterval);
       window.removeEventListener("focus", onFocus);
-      window.removeEventListener("chat:unread-updated" as unknown as keyof WindowEventMap, onChatUpdate as EventListener);
+      document.removeEventListener("visibilitychange", onVisibilityChange);
+      window.removeEventListener("beforeunload", onBeforeUnload);
+      window.removeEventListener(
+        "chat:unread-updated" as unknown as keyof WindowEventMap,
+        onChatUpdate as EventListener
+      );
     };
-  }, [fetchUnread]);
+  }, [fetchUnread, pingPresence]);
 
   return (
     <Link

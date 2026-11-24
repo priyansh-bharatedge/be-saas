@@ -13,7 +13,14 @@ import { playSendSound, playReceiveSound } from "@/lib/chat/audio";
 interface ChatClientProps {
   initialConversations: ConversationSummary[];
   currentUserId: string;
-  initialColleagues: { id: string; name: string; department: string; designation: string }[];
+  initialColleagues: {
+    id: string;
+    name: string;
+    department: string;
+    designation: string;
+    isOnline?: boolean;
+    lastSeen?: string | null;
+  }[];
 }
 
 export function ChatClient({

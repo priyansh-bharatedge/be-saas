@@ -4,6 +4,7 @@ import { useState } from "react";
 import { X, Users, LogOut, Shield, User, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { ChatParticipantInfo } from "@/lib/actions/chat";
+import { formatWhatsAppLastSeen } from "@/lib/chat/presence";
 
 interface GroupInfoDrawerProps {
   isOpen: boolean;
@@ -90,8 +91,16 @@ export function GroupInfoDrawer({
                   className="flex items-center justify-between p-2.5 rounded-2xl hover:bg-slate-50 border border-transparent hover:border-slate-100 transition-colors"
                 >
                   <div className="flex items-center gap-2.5">
-                    <div className="w-8 h-8 rounded-full bg-gradient-to-br from-[#ACCAD5] to-[#F0944D] text-white flex items-center justify-center font-bold text-xs shrink-0">
-                      {p.name.charAt(0)}
+                    <div className="relative shrink-0">
+                      <div className="w-8 h-8 rounded-full bg-gradient-to-br from-[#ACCAD5] to-[#F0944D] text-white flex items-center justify-center font-bold text-xs">
+                        {p.name.charAt(0)}
+                      </div>
+                      {p.isOnline && (
+                        <span
+                          className="absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 rounded-full bg-emerald-500 border-2 border-white shadow-2xs"
+                          title="Online"
+                        />
+                      )}
                     </div>
                     <div>
                       <div className="flex items-center gap-1.5">
@@ -100,6 +109,9 @@ export function GroupInfoDrawer({
                         </span>
                         {isCurrentUser && (
                           <span className="text-[10px] font-medium text-slate-400">(You)</span>
+                        )}
+                        {p.isOnline && !isCurrentUser && (
+                          <span className="text-[10px] text-emerald-600 font-semibold">• Online</span>
                         )}
                       </div>
                       <div className="text-[10px] text-slate-500">
