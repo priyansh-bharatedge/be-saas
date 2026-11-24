@@ -32,6 +32,7 @@ interface ConversationListProps {
     name: string;
     department: string;
     designation: string;
+    avatarUrl?: string | null;
     isOnline?: boolean;
     lastSeen?: string | null;
   }[];
@@ -286,8 +287,16 @@ export function ConversationList({
               >
                 <div className="flex items-center gap-2">
                   <div className="relative">
-                    <div className="w-6 h-6 rounded-full bg-gradient-to-br from-[#ACCAD5] to-[#F0944D] text-white flex items-center justify-center font-bold text-[10px]">
-                      {col.name.charAt(0)}
+                    <div className="w-6 h-6 rounded-full bg-gradient-to-br from-[#ACCAD5] to-[#F0944D] text-white flex items-center justify-center font-bold text-[10px] overflow-hidden border border-white">
+                      {col.avatarUrl ? (
+                        <img
+                          src={col.avatarUrl}
+                          alt={col.name}
+                          className="w-full h-full object-cover"
+                        />
+                      ) : (
+                        col.name.charAt(0)
+                      )}
                     </div>
                     {col.isOnline && (
                       <span

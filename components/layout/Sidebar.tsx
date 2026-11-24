@@ -66,6 +66,18 @@ export function Sidebar({ user }: SidebarProps) {
     }
   }, [user?.avatarUrl]);
 
+  // Sync avatar dynamically when updated anywhere across the app
+  useEffect(() => {
+    const handleAvatarUpdate = (e: Event) => {
+      const customEvt = e as CustomEvent<{ employeeId: string; avatarUrl: string | null }>;
+      if (customEvt.detail?.employeeId === user?.id) {
+        setAvatarUrl(customEvt.detail.avatarUrl);
+      }
+    };
+    window.addEventListener("be_avatar_updated", handleAvatarUpdate);
+    return () => window.removeEventListener("be_avatar_updated", handleAvatarUpdate);
+  }, [user?.id]);
+
   // Restore collapsed state preference from localStorage on mount
   useEffect(() => {
     try {

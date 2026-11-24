@@ -93,6 +93,14 @@ export function UserProfilePhotoModal({
       setSuccessMsg("Profile photo updated successfully!");
       if (onAvatarUpdated) onAvatarUpdated(data.avatarUrl);
 
+      if (typeof window !== "undefined" && user?.id) {
+        window.dispatchEvent(
+          new CustomEvent("be_avatar_updated", {
+            detail: { employeeId: user.id, avatarUrl: data.avatarUrl },
+          })
+        );
+      }
+
       setTimeout(() => {
         router.refresh();
         onClose();
@@ -125,6 +133,14 @@ export function UserProfilePhotoModal({
       setSelectedFile(null);
       setSuccessMsg("Profile photo removed.");
       if (onAvatarUpdated) onAvatarUpdated(null);
+
+      if (typeof window !== "undefined" && user?.id) {
+        window.dispatchEvent(
+          new CustomEvent("be_avatar_updated", {
+            detail: { employeeId: user.id, avatarUrl: null },
+          })
+        );
+      }
 
       setTimeout(() => {
         router.refresh();

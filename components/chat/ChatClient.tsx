@@ -8,6 +8,8 @@ import { ConversationList } from "./ConversationList";
 import { ChatWindow } from "./ChatWindow";
 import { NewGroupModal } from "./NewGroupModal";
 import { GroupInfoDrawer } from "./GroupInfoDrawer";
+import { ContactInfoDrawer, ContactInfoProfile } from "./ContactInfoDrawer";
+import { PhotoLightboxModal } from "./PhotoLightboxModal";
 import { StagedAttachment } from "./MessageComposer";
 import { playSendSound, playReceiveSound } from "@/lib/chat/audio";
 
@@ -19,6 +21,7 @@ interface ChatClientProps {
     name: string;
     department: string;
     designation: string;
+    avatarUrl?: string | null;
     isOnline?: boolean;
     lastSeen?: string | null;
   }[];
@@ -53,6 +56,91 @@ export function ChatClient({
   const [showMobileChat, setShowMobileChat] = useState(!!urlConvId);
   const [groupModalOpen, setGroupModalOpen] = useState(false);
   const [infoDrawerOpen, setInfoDrawerOpen] = useState(false);
+
+  // WhatsApp-Style Contact Info Drawer state
+  const [contactDrawerOpen, setContactDrawerOpen] = useState(false);
+  const [selectedContact, setSelectedContact] = useState<ContactInfoProfile | null>(null);
+
+  // Full-Screen Photo Lightbox Modal state
+  const [lightboxState, setLightboxState] = useState<{
+    isOpen: boolean;
+    photoUrl: string | null;
+    title: string;
+    subtitle?: string;
+    canEdit?: boolean;
+    onUpload?: (f: File) => Promise<void>;
+    onRemove?: () => Promise<void>;
+  }>({
+    isOpen: false,
+    photoUrl: null,
+    title: "",
+  });
+
+  const handleOpenLightbox = useCallback(
+    (
+      photoUrl: string,
+      title: string,
+      subtitle?: string,
+      canEdit?: boolean,
+      onUpload?: (f: File) => Promise<void>,
+      onRemove?: () => Promise<void>
+    ) => {
+      setLightboxState({
+        isOpen: true,
+        photoUrl,
+        title,
+        subtitle,
+        canEdit,
+        onUpload,
+        onRemove,
+      });
+    },
+    []
+  );
+
+  const handleCloseLightbox = useCallback(() => {
+    setLightboxState((prev) => ({ ...prev, isOpen: false }));
+  }, []);
+
+  // Self photo update handlers for lightbox
+  const handleSelfPhotoUpload = async (file: File) => {
+    const formData = new FormData();
+    formData.append("file", file);
+    const res = await fetch("/api/user/profile-photo", {
+      method: "POST",
+      body: formData,
+    });
+    const data = await res.json();
+    if (!res.ok || !data.success) {
+      throw new Error(data.error || "Failed to upload photo");
+    }
+    if (typeof window !== "undefined") {
+      window.dispatchEvent(
+        new CustomEvent("be_avatar_updated", {
+          detail: { employeeId: currentUserId, avatarUrl: data.avatarUrl },
+        })
+      );
+    }
+    setLightboxState((prev) => ({ ...prev, photoUrl: data.avatarUrl }));
+  };
+
+  const handleSelfPhotoRemove = async () => {
+    const res = await fetch("/api/user/profile-photo", {
+      method: "DELETE",
+    });
+    const data = await res.json();
+    if (!res.ok || !data.success) {
+      throw new Error(data.error || "Failed to remove photo");
+    }
+    if (typeof window !== "undefined") {
+      window.dispatchEvent(
+        new CustomEvent("be_avatar_updated", {
+          detail: { employeeId: currentUserId, avatarUrl: null },
+        })
+      );
+    }
+    setLightboxState((prev) => ({ ...prev, isOpen: false, photoUrl: null }));
+  };
 
   const activeIdRef = useRef<string | null>(activeId);
   activeIdRef.current = activeId;
@@ -573,6 +661,108 @@ export function ChatClient({
     fetchMessages(activeId, false);
   };
 
+  // Open Contact Info Drawer (WhatsApp style)
+  const handleOpenContactInfo = useCallback(
+    (contact?: ContactInfoProfile | null) => {
+      if (contact) {
+        setSelectedContact(contact);
+        setContactDrawerOpen(true);
+      } else if (activeConversation && !activeConversation.isGroup) {
+        const other =
+          activeConversation.otherParticipant ||
+          activeConversation.participants.find((p) => p.employeeId !== currentUserId) ||
+          activeConversation.participants[0];
+
+        if (other) {
+          setSelectedContact({
+            id: other.employeeId,
+            employeeId: other.employeeId,
+            name: other.name,
+            email: other.email,
+            department: other.department,
+            designation: other.designation,
+            avatarUrl: other.avatarUrl || activeConversation.avatarUrl,
+            isOnline: other.isOnline,
+            lastSeen: other.lastSeen,
+          });
+          setContactDrawerOpen(true);
+        }
+      }
+    },
+    [activeConversation, currentUserId]
+  );
+
+  const handleCloseContactInfo = useCallback(() => {
+    setContactDrawerOpen(false);
+  }, []);
+
+  // Real-time dynamic avatar synchronization across conversation list, chat window, and drawers
+  useEffect(() => {
+    const handleAvatarSync = (e: Event) => {
+      const customEvt = e as CustomEvent<{ employeeId: string; avatarUrl: string | null }>;
+      if (!customEvt.detail?.employeeId) return;
+      const { employeeId, avatarUrl } = customEvt.detail;
+
+      // 1. Update conversations
+      setConversations((prev) =>
+        prev.map((c) => {
+          let updated = false;
+          let newAvatarUrl = c.avatarUrl;
+          if (
+            !c.isGroup &&
+            (c.otherParticipant?.employeeId === employeeId ||
+              c.participants.some(
+                (p) => p.employeeId === employeeId && p.employeeId !== currentUserId
+              ))
+          ) {
+            newAvatarUrl = avatarUrl;
+            updated = true;
+          }
+          const newParticipants = c.participants.map((p) => {
+            if (p.employeeId === employeeId) {
+              updated = true;
+              return { ...p, avatarUrl };
+            }
+            return p;
+          });
+
+          const newOther =
+            c.otherParticipant && c.otherParticipant.employeeId === employeeId
+              ? { ...c.otherParticipant, avatarUrl }
+              : c.otherParticipant;
+
+          return updated
+            ? {
+                ...c,
+                avatarUrl: newAvatarUrl,
+                participants: newParticipants,
+                otherParticipant: newOther,
+              }
+            : c;
+        })
+      );
+
+      // 2. Update message bubbles
+      setMessages((prev) =>
+        prev.map((m) =>
+          m.senderId === employeeId ? { ...m, senderAvatarUrl: avatarUrl } : m
+        )
+      );
+
+      // 3. Update active contact drawer if open
+      setSelectedContact((prev) => {
+        if (!prev) return null;
+        if (prev.employeeId === employeeId || prev.id === employeeId) {
+          return { ...prev, avatarUrl };
+        }
+        return prev;
+      });
+    };
+
+    window.addEventListener("be_avatar_updated", handleAvatarSync);
+    return () => window.removeEventListener("be_avatar_updated", handleAvatarSync);
+  }, [currentUserId]);
+
   return (
     <div className="relative h-full w-full rounded-[24px] sm:rounded-[28px] lg:rounded-[32px] bg-white/75 backdrop-blur-2xl border border-white/80 shadow-[0_12px_40px_rgba(0,0,0,0.03)] overflow-hidden flex flex-row min-h-0">
       {/* Ambient background blur */}
@@ -618,7 +808,15 @@ export function ChatClient({
           messages={messages}
           currentUserId={currentUserId}
           onSendMessage={handleSendMessage}
-          onOpenInfo={() => setInfoDrawerOpen(true)}
+          onOpenInfo={() => {
+            if (activeConversation?.isGroup) {
+              setInfoDrawerOpen(true);
+            } else {
+              handleOpenContactInfo();
+            }
+          }}
+          onOpenContactInfo={() => handleOpenContactInfo()}
+          onOpenLightbox={handleOpenLightbox}
           onBackMobile={() => setShowMobileChat(false)}
           isLoadingMessages={isLoadingMessages}
           onToggleReaction={handleToggleReaction}
@@ -634,7 +832,7 @@ export function ChatClient({
       />
 
       {/* Group Info Drawer */}
-      {activeConversation && (
+      {activeConversation && activeConversation.isGroup && (
         <GroupInfoDrawer
           isOpen={infoDrawerOpen}
           onClose={() => setInfoDrawerOpen(false)}
@@ -649,8 +847,42 @@ export function ChatClient({
           onUpdateGroupPermission={handleUpdateGroupPermission}
           onUpdateMemberPermission={handleUpdateMemberPermission}
           onUpdateGroupAvatar={handleUpdateGroupAvatar}
+          onSelectMember={(p) => handleOpenContactInfo(p)}
+          onOpenLightbox={handleOpenLightbox}
         />
       )}
+
+      {/* WhatsApp-Style Contact Info Drawer */}
+      <ContactInfoDrawer
+        isOpen={contactDrawerOpen}
+        onClose={handleCloseContactInfo}
+        contact={selectedContact}
+        messages={messages}
+        currentUserId={currentUserId}
+        onOpenLightbox={(photoUrl, title, subtitle, canEdit) =>
+          handleOpenLightbox(
+            photoUrl,
+            title,
+            subtitle,
+            canEdit,
+            canEdit ? handleSelfPhotoUpload : undefined,
+            canEdit ? handleSelfPhotoRemove : undefined
+          )
+        }
+        onStartDM={handleStartDM}
+      />
+
+      {/* Full-Screen Photo Lightbox Modal */}
+      <PhotoLightboxModal
+        isOpen={lightboxState.isOpen}
+        onClose={handleCloseLightbox}
+        photoUrl={lightboxState.photoUrl}
+        title={lightboxState.title}
+        subtitle={lightboxState.subtitle}
+        canEdit={lightboxState.canEdit}
+        onUploadPhoto={lightboxState.onUpload}
+        onRemovePhoto={lightboxState.onRemove}
+      />
     </div>
   );
 }

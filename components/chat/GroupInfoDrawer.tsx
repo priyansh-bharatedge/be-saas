@@ -35,6 +35,15 @@ interface GroupInfoDrawerProps {
   onUpdateGroupPermission?: (permission: "ALL_MEMBERS" | "ONLY_ADMINS") => Promise<void>;
   onUpdateMemberPermission?: (employeeId: string, canSendMessages: boolean) => Promise<void>;
   onUpdateGroupAvatar?: (newAvatarUrl: string | null) => void;
+  onSelectMember?: (participant: ChatParticipantInfo) => void;
+  onOpenLightbox?: (
+    photoUrl: string,
+    title: string,
+    subtitle?: string,
+    canEdit?: boolean,
+    onUpload?: (f: File) => Promise<void>,
+    onRemove?: () => Promise<void>
+  ) => void;
 }
 
 export function GroupInfoDrawer({
@@ -51,6 +60,8 @@ export function GroupInfoDrawer({
   onUpdateGroupPermission,
   onUpdateMemberPermission,
   onUpdateGroupAvatar,
+  onSelectMember,
+  onOpenLightbox,
 }: GroupInfoDrawerProps) {
   const [isLeaving, setIsLeaving] = useState(false);
   const [isUpdatingGroupPerm, setIsUpdatingGroupPerm] = useState(false);
@@ -231,7 +242,37 @@ export function GroupInfoDrawer({
           {isGroup && (
             <div className="flex flex-col items-center justify-center p-4 rounded-2xl bg-slate-50/70 border border-slate-200/60 text-center space-y-3">
               <div className="relative group/avatar">
-                <div className="w-20 h-20 rounded-3xl bg-gradient-to-br from-[#ACCAD5] to-[#7EA9B8] text-white flex items-center justify-center font-bold text-2xl shadow-md border-2 border-white overflow-hidden">
+                <div
+                  onClick={() => {
+                    if (groupAvatar && onOpenLightbox) {
+                      onOpenLightbox(
+                        groupAvatar,
+                        conversationName,
+                        "Group Profile Photo",
+                        isCurrentUserAdmin,
+                        async (file) => {
+                          const formData = new FormData();
+                          formData.append("file", file);
+                          const res = await fetch(`/api/chat/conversations/${conversationId}/avatar`, {
+                            method: "POST",
+                            body: formData,
+                          });
+                          const data = await res.json();
+                          if (!res.ok || !data.success) {
+                            throw new Error(data.error || "Failed to update group icon.");
+                          }
+                          setGroupAvatar(data.avatarUrl);
+                          if (onUpdateGroupAvatar) onUpdateGroupAvatar(data.avatarUrl);
+                        },
+                        handleRemoveGroupAvatar
+                      );
+                    }
+                  }}
+                  className={`w-20 h-20 rounded-3xl bg-gradient-to-br from-[#ACCAD5] to-[#7EA9B8] text-white flex items-center justify-center font-bold text-2xl shadow-md border-2 border-white overflow-hidden ${
+                    groupAvatar ? "cursor-pointer hover:scale-105 transition-transform" : ""
+                  }`}
+                  title={groupAvatar ? "Click to view full-resolution photo" : conversationName}
+                >
                   {groupAvatar ? (
                     <img
                       src={groupAvatar}
@@ -376,9 +417,13 @@ export function GroupInfoDrawer({
                     key={p.id}
                     className="flex items-center justify-between p-2.5 rounded-2xl hover:bg-slate-50 border border-transparent hover:border-slate-100 transition-colors"
                   >
-                    <div className="flex items-center gap-2.5 min-w-0 flex-1">
+                    <div
+                      onClick={() => onSelectMember?.(p)}
+                      className="flex items-center gap-2.5 min-w-0 flex-1 cursor-pointer group/member"
+                      title={`View ${p.name}'s profile`}
+                    >
                       <div className="relative shrink-0">
-                        <div className="w-8 h-8 rounded-full bg-gradient-to-br from-[#ACCAD5] to-[#F0944D] text-white flex items-center justify-center font-bold text-xs overflow-hidden border border-white">
+                        <div className="w-8 h-8 rounded-full bg-gradient-to-br from-[#ACCAD5] to-[#F0944D] text-white flex items-center justify-center font-bold text-xs overflow-hidden border border-white group-hover/member:scale-105 transition-transform">
                           {p.avatarUrl ? (
                             <img
                               src={p.avatarUrl}
@@ -398,7 +443,7 @@ export function GroupInfoDrawer({
                       </div>
                       <div className="min-w-0 flex-1">
                         <div className="flex items-center gap-1.5 truncate">
-                          <span className="text-xs font-semibold text-slate-900 truncate">
+                          <span className="text-xs font-semibold text-slate-900 group-hover/member:text-[#C66318] truncate transition-colors">
                             {p.name}
                           </span>
                           {isCurrentUser && (
