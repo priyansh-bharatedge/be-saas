@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useSearchParams } from "next/navigation";
 import { ConversationSummary, MessageItem } from "@/lib/actions/chat";
+import { AuditConversationSummary } from "@/lib/actions/chat-audit";
 import { ConversationList } from "./ConversationList";
 import { ChatWindow } from "./ChatWindow";
 import { NewGroupModal } from "./NewGroupModal";
@@ -21,18 +22,31 @@ interface ChatClientProps {
     isOnline?: boolean;
     lastSeen?: string | null;
   }[];
+  isSuperAdmin?: boolean;
 }
 
 export function ChatClient({
   initialConversations,
   currentUserId,
   initialColleagues,
+  isSuperAdmin = false,
 }: ChatClientProps) {
   const [conversations, setConversations] = useState<ConversationSummary[]>(initialConversations);
   const searchParams = useSearchParams();
   const urlConvId = searchParams.get("c");
 
-  // Requirement 2: Default empty state - do not auto-select unless directed by URL param (e.g. from top notification click)
+  // Mode Switcher for Super Admin: "MY_CHATS" vs "ALL_ORG_CHATS"
+  const [chatMode, setChatMode] = useState<"MY_CHATS" | "ALL_ORG_CHATS">("MY_CHATS");
+
+  // Super Admin Audit State
+  const [auditConversations, setAuditConversations] = useState<AuditConversationSummary[]>([]);
+  const [isLoadingAudit, setIsLoadingAudit] = useState(false);
+  const [auditTypeFilter, setAuditTypeFilter] = useState<"ALL" | "DMS" | "GROUPS">("ALL");
+  const [auditDepartmentFilter, setAuditDepartmentFilter] = useState<string>("ALL");
+  const [auditSearch, setAuditSearch] = useState("");
+  const [departmentsList, setDepartmentsList] = useState<string[]>([]);
+
+  // Active chat state
   const [activeId, setActiveId] = useState<string | null>(urlConvId || null);
   const [messages, setMessages] = useState<MessageItem[]>([]);
   const [isLoadingMessages, setIsLoadingMessages] = useState(false);
@@ -40,9 +54,41 @@ export function ChatClient({
   const [groupModalOpen, setGroupModalOpen] = useState(false);
   const [infoDrawerOpen, setInfoDrawerOpen] = useState(false);
 
-  const activeConversation = conversations.find((c) => c.id === activeId) || null;
   const activeIdRef = useRef<string | null>(activeId);
   activeIdRef.current = activeId;
+
+  const chatModeRef = useRef<"MY_CHATS" | "ALL_ORG_CHATS">(chatMode);
+  chatModeRef.current = chatMode;
+
+  // Active conversation mapping based on mode
+  const activeAuditConv = auditConversations.find((c) => c.id === activeId);
+  const activeConversation: ConversationSummary | null =
+    chatMode === "ALL_ORG_CHATS" && activeAuditConv
+      ? {
+          id: activeAuditConv.id,
+          isGroup: activeAuditConv.isGroup,
+          name: activeAuditConv.displayTitle,
+          avatarUrl: activeAuditConv.avatarUrl,
+          subtitle: activeAuditConv.displaySubtitle,
+          unreadCount: 0,
+          updatedAt: activeAuditConv.updatedAt,
+          participants: activeAuditConv.participants.map((p) => ({
+            id: p.id,
+            employeeId: p.employeeId,
+            name: p.name,
+            email: p.email,
+            department: p.department,
+            designation: p.designation,
+            role: p.role as any,
+            canSendMessages: true,
+            lastReadAt: null,
+            isOnline: p.isOnline,
+            lastSeen: p.lastSeen,
+          })),
+          isOnline: false,
+          lastSeen: null,
+        }
+      : conversations.find((c) => c.id === activeId) || null;
 
   // Sync with URL query param ?c=...
   useEffect(() => {
@@ -69,7 +115,7 @@ export function ChatClient({
     initialConversations.reduce((acc, c) => acc + c.unreadCount, 0)
   );
 
-  // Fetch messages for active conversation
+  // Fetch messages for active conversation in normal user mode
   const fetchMessages = useCallback(
     async (convId: string, showLoading = false) => {
       if (showLoading) setIsLoadingMessages(true);
@@ -103,7 +149,26 @@ export function ChatClient({
     [currentUserId]
   );
 
-  // Fetch conversation list for unread badges and order
+  // Fetch audit messages for Super Admin (SILENT: zero read receipt or unread count side effects)
+  const fetchAuditMessages = useCallback(
+    async (convId: string, showLoading = false) => {
+      if (showLoading) setIsLoadingMessages(true);
+      try {
+        const res = await fetch(`/api/chat/admin/conversations/${convId}/messages?limit=100`);
+        const data = await res.json();
+        if (data.success && data.messages) {
+          setMessages(data.messages);
+        }
+      } catch (err) {
+        console.error("Error fetching audit messages:", err);
+      } finally {
+        if (showLoading) setIsLoadingMessages(false);
+      }
+    },
+    []
+  );
+
+  // Fetch conversations list in normal user mode
   const fetchConversations = useCallback(async () => {
     try {
       const res = await fetch("/api/chat/conversations");
@@ -126,53 +191,116 @@ export function ChatClient({
     }
   }, [dispatchTopBarUnread]);
 
-  // When activeId changes, load messages and mark as read
+  // Fetch audit conversations for Super Admin
+  const fetchAuditConversations = useCallback(async () => {
+    if (!isSuperAdmin) return;
+    setIsLoadingAudit(true);
+    try {
+      const params = new URLSearchParams();
+      if (auditTypeFilter !== "ALL") params.set("chatType", auditTypeFilter);
+      if (auditDepartmentFilter !== "ALL") params.set("department", auditDepartmentFilter);
+      if (auditSearch.trim()) params.set("search", auditSearch.trim());
+
+      const res = await fetch(`/api/chat/admin/conversations?${params.toString()}`);
+      const data = await res.json();
+      if (data.success && data.conversations) {
+        setAuditConversations(data.conversations);
+
+        // Derive department list dynamically from conversations
+        const depts = Array.from(
+          new Set(
+            (data.conversations as AuditConversationSummary[])
+              .flatMap((c) => c.departments)
+              .filter(Boolean)
+          )
+        ).sort();
+        setDepartmentsList(depts);
+      }
+    } catch (err) {
+      console.error("Error fetching audit conversations:", err);
+    } finally {
+      setIsLoadingAudit(false);
+    }
+  }, [isSuperAdmin, auditTypeFilter, auditDepartmentFilter, auditSearch]);
+
+  // When activeId changes, load messages based on mode
   useEffect(() => {
     if (activeId) {
-      initialFetchDoneRef.current = false;
-      fetchMessages(activeId, true);
-      // Reset unread count locally for active conversation
-      setConversations((prev) => {
-        const next = prev.map((c) => (c.id === activeId ? { ...c, unreadCount: 0 } : c));
-        dispatchTopBarUnread(next);
-        return next;
-      });
-      // Persist read state in PostgreSQL & clear bell notifications
-      fetch("/api/chat/read", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ conversationId: activeId }),
-      }).catch((err) => console.error("Error marking read:", err));
+      if (chatMode === "ALL_ORG_CHATS") {
+        // Silent oversight inspection
+        fetchAuditMessages(activeId, true);
+      } else {
+        // Standard user view: loads messages and marks as read
+        initialFetchDoneRef.current = false;
+        fetchMessages(activeId, true);
+        setConversations((prev) => {
+          const next = prev.map((c) => (c.id === activeId ? { ...c, unreadCount: 0 } : c));
+          dispatchTopBarUnread(next);
+          return next;
+        });
+        fetch("/api/chat/read", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ conversationId: activeId }),
+        }).catch((err) => console.error("Error marking read:", err));
+      }
     } else {
       setMessages([]);
     }
-  }, [activeId, fetchMessages, dispatchTopBarUnread]);
+  }, [activeId, chatMode, fetchMessages, fetchAuditMessages, dispatchTopBarUnread]);
+
+  // When chatMode or audit filters change, reload audit conversations
+  useEffect(() => {
+    if (chatMode === "ALL_ORG_CHATS") {
+      fetchAuditConversations();
+    }
+  }, [chatMode, fetchAuditConversations]);
 
   // Live polling ticker (runs every 3.5 seconds)
   useEffect(() => {
     const timer = setInterval(() => {
-      // 1. Refresh conversations & unread badges
-      fetchConversations();
-      // 2. Refresh active chat messages
-      if (activeIdRef.current) {
-        fetchMessages(activeIdRef.current, false);
+      if (chatModeRef.current === "ALL_ORG_CHATS") {
+        // Silent refresh of audit conversations
+        fetchAuditConversations();
+        if (activeIdRef.current) {
+          fetchAuditMessages(activeIdRef.current, false);
+        }
+      } else {
+        // Standard user polling
+        fetchConversations();
+        if (activeIdRef.current) {
+          fetchMessages(activeIdRef.current, false);
+        }
       }
     }, 3500);
 
     return () => clearInterval(timer);
-  }, [fetchConversations, fetchMessages]);
+  }, [fetchConversations, fetchMessages, fetchAuditConversations, fetchAuditMessages]);
+
+  // Handle switching mode between My Chats and All Org Chats
+  const handleModeChange = (newMode: "MY_CHATS" | "ALL_ORG_CHATS") => {
+    setChatMode(newMode);
+    setActiveId(null);
+    setMessages([]);
+    setShowMobileChat(false);
+  };
 
   // Handle select conversation
   const handleSelectConversation = (id: string) => {
     setActiveId(id);
     setShowMobileChat(true);
-    // Immediately clear unread badge in sidebar
+
+    if (chatMode === "ALL_ORG_CHATS") {
+      fetchAuditMessages(id, true);
+      return;
+    }
+
     setConversations((prev) => {
       const next = prev.map((c) => (c.id === id ? { ...c, unreadCount: 0 } : c));
       dispatchTopBarUnread(next);
       return next;
     });
-    // Update DB
+
     fetch("/api/chat/read", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -216,19 +344,18 @@ export function ChatClient({
     messageType?: "TEXT" | "IMAGE" | "DOCUMENT" | "FILE";
     attachments?: StagedAttachment[];
   }) => {
-    if (!activeId) return;
+    // In Oversight Mode, message sending is blocked
+    if (!activeId || chatMode === "ALL_ORG_CHATS") return;
 
-    // Requirement 3: Play send sound
     playSendSound();
 
-    // Optimistic message with status "SENT" (single grey tick)
     const tempId = `temp-${Date.now()}`;
     const optimisticMsg: MessageItem = {
       id: tempId,
       conversationId: activeId,
       senderId: currentUserId,
       senderName: "You",
-      senderInitials: "ME",
+      senderInitials: "YO",
       content: payload.content || null,
       messageType: payload.messageType || "TEXT",
       attachmentUrl: payload.attachmentUrl || null,
@@ -239,6 +366,7 @@ export function ChatClient({
       createdAt: new Date().toISOString(),
       isSelf: true,
       status: "SENT",
+      reactions: [],
     };
 
     setMessages((prev) => [...prev, optimisticMsg]);
@@ -250,14 +378,20 @@ export function ChatClient({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           conversationId: activeId,
-          ...payload,
+          content: payload.content,
+          attachmentUrl: payload.attachmentUrl,
+          attachmentName: payload.attachmentName,
+          attachmentSize: payload.attachmentSize,
+          attachmentMimeType: payload.attachmentMimeType,
+          messageType: payload.messageType,
+          attachments: payload.attachments,
         }),
       });
 
       const data = await res.json();
       if (data.success && data.message) {
         setMessages((prev) =>
-          prev.map((m) => (m.id === tempId ? data.message : m))
+          prev.map((m) => (m.id === tempId ? { ...data.message, isSelf: true } : m))
         );
         prevMessageIdsRef.current.delete(tempId);
         prevMessageIdsRef.current.add(data.message.id);
@@ -268,16 +402,10 @@ export function ChatClient({
     }
   };
 
-  // Handle leave group
-  const handleLeaveGroup = async () => {
-    setInfoDrawerOpen(false);
-    await fetchConversations();
-    setActiveId(null);
-    setShowMobileChat(false);
-  };
-
   // Handle toggle emoji reaction on a message (WhatsApp style)
   const handleToggleReaction = async (messageId: string, emoji: string) => {
+    if (chatMode === "ALL_ORG_CHATS") return; // Read-only in oversight mode
+
     // 1. Optimistic UI update
     setMessages((prev) =>
       prev.map((msg) => {
@@ -288,7 +416,6 @@ export function ChatClient({
         let nextReactions = [...currentReactions];
 
         if (existingMyReaction && existingMyReaction.emoji === emoji) {
-          // Toggle off: remove or decrement
           if (existingMyReaction.count <= 1) {
             nextReactions = nextReactions.filter((r) => r.emoji !== emoji);
           } else {
@@ -304,7 +431,6 @@ export function ChatClient({
             );
           }
         } else {
-          // If already reacted with a different emoji, remove old reaction first
           if (existingMyReaction) {
             if (existingMyReaction.count <= 1) {
               nextReactions = nextReactions.filter(
@@ -324,7 +450,6 @@ export function ChatClient({
             }
           }
 
-          // Add / increment new target emoji reaction
           const targetGroup = nextReactions.find((r) => r.emoji === emoji);
           if (targetGroup) {
             nextReactions = nextReactions.map((r) =>
@@ -373,7 +498,7 @@ export function ChatClient({
 
   // Handle updating group messaging permission (Only Admins / All Members)
   const handleUpdateGroupPermission = async (perm: "ALL_MEMBERS" | "ONLY_ADMINS") => {
-    if (!activeId) return;
+    if (!activeId || chatMode === "ALL_ORG_CHATS") return;
     try {
       const res = await fetch("/api/chat/permissions", {
         method: "POST",
@@ -399,7 +524,7 @@ export function ChatClient({
     employeeId: string,
     canSendMessages: boolean
   ) => {
-    if (!activeId) return;
+    if (!activeId || chatMode === "ALL_ORG_CHATS") return;
     try {
       const res = await fetch("/api/chat/permissions", {
         method: "POST",
@@ -431,6 +556,14 @@ export function ChatClient({
     }
   };
 
+  // Handle leave group
+  const handleLeaveGroup = async () => {
+    setInfoDrawerOpen(false);
+    await fetchConversations();
+    setActiveId(null);
+    setShowMobileChat(false);
+  };
+
   return (
     <div className="relative h-full w-full rounded-[24px] sm:rounded-[28px] lg:rounded-[32px] bg-white/75 backdrop-blur-2xl border border-white/80 shadow-[0_12px_40px_rgba(0,0,0,0.03)] overflow-hidden flex flex-row min-h-0">
       {/* Ambient background blur */}
@@ -450,6 +583,18 @@ export function ChatClient({
           onOpenNewGroup={() => setGroupModalOpen(true)}
           onStartDM={handleStartDM}
           colleagues={initialColleagues}
+          isSuperAdmin={isSuperAdmin}
+          chatMode={chatMode}
+          onModeChange={handleModeChange}
+          auditConversations={auditConversations}
+          isLoadingAudit={isLoadingAudit}
+          auditTypeFilter={auditTypeFilter}
+          onAuditTypeFilterChange={setAuditTypeFilter}
+          auditDepartmentFilter={auditDepartmentFilter}
+          onAuditDepartmentFilterChange={setAuditDepartmentFilter}
+          auditSearch={auditSearch}
+          onAuditSearchChange={setAuditSearch}
+          departmentsList={departmentsList}
         />
       </div>
 
@@ -468,6 +613,7 @@ export function ChatClient({
           onBackMobile={() => setShowMobileChat(false)}
           isLoadingMessages={isLoadingMessages}
           onToggleReaction={handleToggleReaction}
+          isOversightMode={chatMode === "ALL_ORG_CHATS"}
         />
       </div>
 

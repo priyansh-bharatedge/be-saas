@@ -25,6 +25,7 @@ interface ChatWindowProps {
   onBackMobile: () => void;
   isLoadingMessages?: boolean;
   onToggleReaction?: (messageId: string, emoji: string) => void;
+  isOversightMode?: boolean;
 }
 
 export function ChatWindow({
@@ -36,6 +37,7 @@ export function ChatWindow({
   onBackMobile,
   isLoadingMessages,
   onToggleReaction,
+  isOversightMode = false,
 }: ChatWindowProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
 
@@ -188,6 +190,26 @@ export function ChatWindow({
         </Button>
       </div>
 
+      {/* Super Admin Oversight Mode Banner */}
+      {isOversightMode && (
+        <div className="px-4 py-2.5 bg-gradient-to-r from-amber-500/10 via-[#ACCAD5]/20 to-transparent border-b border-amber-200/70 flex items-center justify-between text-xs text-amber-950 shrink-0 shadow-2xs">
+          <div className="flex items-center gap-2">
+            <div className="w-5 h-5 rounded-full bg-amber-500/20 text-amber-800 flex items-center justify-center shrink-0">
+              <ShieldCheck className="h-3.5 w-3.5" />
+            </div>
+            <div>
+              <span className="font-bold">Super Admin Oversight Mode — Read Only</span>
+              <span className="hidden sm:inline text-[11px] text-amber-800/80 ml-2">
+                (Silent audit: messaging disabled & employee unread status untouched)
+              </span>
+            </div>
+          </div>
+          <span className="font-mono text-[9px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full bg-amber-100 text-amber-800 border border-amber-300 shrink-0">
+            Audit Archive
+          </span>
+        </div>
+      )}
+
       {/* Messages Scroll Area (Internally scrolling, flex-1 min-h-0) */}
       <div
         ref={scrollRef}
@@ -212,8 +234,9 @@ export function ChatWindow({
                 message={msg}
                 showDateSeparator={isFirstOfDay}
                 dateLabel={isFirstOfDay ? getDateLabel(msg.createdAt) : undefined}
-                isGroup={conversation.isGroup}
-                onToggleReaction={onToggleReaction}
+                isGroup={conversation.isGroup || isOversightMode}
+                onToggleReaction={isOversightMode ? undefined : onToggleReaction}
+                isOversightMode={isOversightMode}
               />
             );
           })
@@ -221,7 +244,12 @@ export function ChatWindow({
       </div>
 
       {/* Sticky Message Composer or WhatsApp-Style Restriction Notice */}
-      {restrictionNotice ? (
+      {isOversightMode ? (
+        <div className="p-3.5 bg-slate-50/95 backdrop-blur-md border-t border-slate-200/80 flex items-center justify-center gap-2 text-xs text-slate-500 font-medium select-none shadow-xs">
+          <Lock className="h-4 w-4 text-slate-400 shrink-0" />
+          <span>Super Admin Oversight Mode — Message sending disabled for audit review</span>
+        </div>
+      ) : restrictionNotice ? (
         <div className="p-4 bg-slate-50/95 backdrop-blur-md border-t border-slate-200/80 flex items-center justify-center gap-2 text-xs text-slate-500 font-medium select-none shadow-xs">
           <Lock className="h-4 w-4 text-slate-400 shrink-0" />
           <span>{restrictionNotice}</span>

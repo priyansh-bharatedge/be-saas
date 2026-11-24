@@ -81,6 +81,7 @@ export interface MessageItem {
   isSelf: boolean;
   status: "SENT" | "DELIVERED" | "READ";
   reactions?: MessageReactionGroup[];
+  isDeleted?: boolean;
 }
 
 export interface MessageReactionGroup {

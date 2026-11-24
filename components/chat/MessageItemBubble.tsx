@@ -22,6 +22,7 @@ interface MessageItemBubbleProps {
   dateLabel?: string;
   isGroup?: boolean;
   onToggleReaction?: (messageId: string, emoji: string) => void;
+  isOversightMode?: boolean;
 }
 
 const QUICK_REACTIONS = ["👍", "❤️", "😂", "😮", "😢", "🙏"];
@@ -32,6 +33,7 @@ export function MessageItemBubble({
   dateLabel,
   isGroup,
   onToggleReaction,
+  isOversightMode = false,
 }: MessageItemBubbleProps) {
   const [activeLightboxUrl, setActiveLightboxUrl] = useState<string | null>(null);
   const [isCustomPickerOpen, setIsCustomPickerOpen] = useState(false);
@@ -143,64 +145,66 @@ export function MessageItemBubble({
           )}
 
           <div className="relative group/bubble max-w-[85%] sm:max-w-[70%]">
-            {/* Floating Quick Reaction Bar (WhatsApp Style on Hover) */}
-            <div
-              className={`absolute -top-7 ${
-                message.isSelf ? "right-1" : "left-1"
-              } z-20 transition-all duration-150 ${
-                isCustomPickerOpen
-                  ? "opacity-100 pointer-events-auto scale-100"
-                  : "opacity-0 pointer-events-none group-hover/bubble:opacity-100 group-hover/bubble:pointer-events-auto scale-95 group-hover/bubble:scale-100"
-              }`}
-            >
-              <div className="flex items-center gap-0.5 px-2 py-0.5 rounded-full bg-white/95 backdrop-blur-md border border-slate-200/90 shadow-[0_6px_20px_rgba(0,0,0,0.12)]">
-                {QUICK_REACTIONS.map((emoji) => {
-                  const isReacted = message.reactions?.some(
-                    (r) => r.emoji === emoji && r.hasReacted
-                  );
-                  return (
+            {/* Floating Quick Reaction Bar (WhatsApp Style on Hover - Disabled in Oversight Mode) */}
+            {!isOversightMode && onToggleReaction && (
+              <div
+                className={`absolute -top-7 ${
+                  message.isSelf ? "right-1" : "left-1"
+                } z-20 transition-all duration-150 ${
+                  isCustomPickerOpen
+                    ? "opacity-100 pointer-events-auto scale-100"
+                    : "opacity-0 pointer-events-none group-hover/bubble:opacity-100 group-hover/bubble:pointer-events-auto scale-95 group-hover/bubble:scale-100"
+                }`}
+              >
+                <div className="flex items-center gap-0.5 px-2 py-0.5 rounded-full bg-white/95 backdrop-blur-md border border-slate-200/90 shadow-[0_6px_20px_rgba(0,0,0,0.12)]">
+                  {QUICK_REACTIONS.map((emoji) => {
+                    const isReacted = message.reactions?.some(
+                      (r) => r.emoji === emoji && r.hasReacted
+                    );
+                    return (
+                      <button
+                        key={emoji}
+                        type="button"
+                        onClick={() => onToggleReaction?.(message.id, emoji)}
+                        className={`h-6 w-6 flex items-center justify-center rounded-full text-sm leading-none transition-transform hover:scale-130 active:scale-95 ${
+                          isReacted ? "bg-[#ACCAD5]/30 ring-1 ring-[#588594]" : "hover:bg-slate-100"
+                        }`}
+                        title={emoji}
+                      >
+                        <span>{emoji}</span>
+                      </button>
+                    );
+                  })}
+
+                  <div className="w-[1px] h-3.5 bg-slate-200 mx-0.5" />
+
+                  {/* Plus button to open full emoji picker */}
+                  <div className="relative">
                     <button
-                      key={emoji}
                       type="button"
-                      onClick={() => onToggleReaction?.(message.id, emoji)}
-                      className={`h-6 w-6 flex items-center justify-center rounded-full text-sm leading-none transition-transform hover:scale-130 active:scale-95 ${
-                        isReacted ? "bg-[#ACCAD5]/30 ring-1 ring-[#588594]" : "hover:bg-slate-100"
+                      onClick={() => setIsCustomPickerOpen((prev) => !prev)}
+                      className={`h-6 w-6 flex items-center justify-center rounded-full text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-colors ${
+                        isCustomPickerOpen ? "bg-[#EBF3F6] text-[#588594]" : ""
                       }`}
-                      title={emoji}
+                      title="More reactions..."
                     >
-                      <span>{emoji}</span>
+                      <Plus className="h-3.5 w-3.5" />
                     </button>
-                  );
-                })}
 
-                <div className="w-[1px] h-3.5 bg-slate-200 mx-0.5" />
-
-                {/* Plus button to open full emoji picker */}
-                <div className="relative">
-                  <button
-                    type="button"
-                    onClick={() => setIsCustomPickerOpen((prev) => !prev)}
-                    className={`h-6 w-6 flex items-center justify-center rounded-full text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-colors ${
-                      isCustomPickerOpen ? "bg-[#EBF3F6] text-[#588594]" : ""
-                    }`}
-                    title="More reactions..."
-                  >
-                    <Plus className="h-3.5 w-3.5" />
-                  </button>
-
-                  <EmojiPickerPopover
-                    isOpen={isCustomPickerOpen}
-                    onClose={() => setIsCustomPickerOpen(false)}
-                    onSelectEmoji={(emoji) => {
-                      onToggleReaction?.(message.id, emoji);
-                      setIsCustomPickerOpen(false);
-                    }}
-                    position={message.isSelf ? "top-right" : "top-left"}
-                    title="React with emoji"
-                  />
+                    <EmojiPickerPopover
+                      isOpen={isCustomPickerOpen}
+                      onClose={() => setIsCustomPickerOpen(false)}
+                      onSelectEmoji={(emoji) => {
+                        onToggleReaction?.(message.id, emoji);
+                        setIsCustomPickerOpen(false);
+                      }}
+                      position={message.isSelf ? "top-right" : "top-left"}
+                      title="React with emoji"
+                    />
+                  </div>
                 </div>
               </div>
-            </div>
+            )}
 
             {/* Message Bubble Container */}
             <div
@@ -300,10 +304,19 @@ export function MessageItemBubble({
               )}
 
               {/* Text Content */}
-              {message.content && (
-                <p className="text-xs leading-relaxed whitespace-pre-wrap break-words">
-                  {message.content}
-                </p>
+              {message.isDeleted ? (
+                <div className="py-1 flex items-center gap-1.5 text-xs text-slate-400 italic">
+                  <span className="px-1.5 py-0.5 rounded-md bg-rose-50 text-rose-600 border border-rose-200/80 text-[10px] font-semibold not-italic">
+                    Deleted by sender
+                  </span>
+                  <span>{message.content || "This message was deleted."}</span>
+                </div>
+              ) : (
+                message.content && (
+                  <p className="text-xs leading-relaxed whitespace-pre-wrap break-words">
+                    {message.content}
+                  </p>
+                )
               )}
 
               {/* Timestamp & WhatsApp-Style Read Receipts (Blue Ticks) */}

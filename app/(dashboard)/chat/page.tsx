@@ -39,6 +39,7 @@ export default async function TeamChatPage() {
             initialConversations={initialConversations}
             currentUserId={user.id}
             initialColleagues={initialColleagues}
+            isSuperAdmin={user.systemRole === "SUPER_ADMIN"}
           />
         </Suspense>
       </div>
