@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { db } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth/session";
-import { ChatMessageType, ChatParticipantRole } from "@prisma/client";
+import { ChatMessageType, ChatParticipantRole, TrackerStatus } from "@prisma/client";
 
 export interface ActionResult<T = unknown> {
   success: boolean;
@@ -106,6 +106,9 @@ export async function getConversationsAction(): Promise<ActionResult<Conversatio
       return { success: false, error: "Unauthorized. Please log in." };
     }
 
+    const todayDate = new Date();
+    todayDate.setUTCHours(0, 0, 0, 0);
+
     const participantRecords = await db.chatParticipant.findMany({
       where: { employeeId: user.id },
       include: {
@@ -125,6 +128,11 @@ export async function getConversationsAction(): Promise<ActionResult<Conversatio
                     isOnline: true,
                     lastSeen: true,
                     lastActiveAt: true,
+                    attendances: {
+                      where: { date: todayDate },
+                      select: { currentStatus: true },
+                      take: 1,
+                    },
                   },
                 },
               },
@@ -169,8 +177,14 @@ export async function getConversationsAction(): Promise<ActionResult<Conversatio
 
         const formattedParticipants: ChatParticipantInfo[] = conv.participants.map((p) => {
           const emp = p.employee;
+          const todayAttendance = emp.attendances?.[0];
+          const isTimerRunning =
+            todayAttendance?.currentStatus === TrackerStatus.ACTIVE ||
+            todayAttendance?.currentStatus === TrackerStatus.MEETING_MODE;
+
           const isUserOnline =
             emp.isOnline &&
+            isTimerRunning &&
             emp.lastActiveAt !== null &&
             nowMs - new Date(emp.lastActiveAt).getTime() <= ONLINE_THRESHOLD_MS;
 
@@ -564,6 +578,22 @@ export async function sendMessageAction(data: {
     }
 
     const now = new Date();
+    const todayDate = new Date();
+    todayDate.setUTCHours(0, 0, 0, 0);
+
+    const attendance = await db.attendance.findUnique({
+      where: {
+        employeeId_date: {
+          employeeId: user.id,
+          date: todayDate,
+        },
+      },
+      select: { currentStatus: true },
+    });
+
+    const isTimerRunning =
+      attendance?.currentStatus === TrackerStatus.ACTIVE ||
+      attendance?.currentStatus === TrackerStatus.MEETING_MODE;
 
     const [message] = await db.$transaction([
       db.chatMessage.create({
@@ -605,11 +635,16 @@ export async function sendMessageAction(data: {
       }),
       db.employee.update({
         where: { id: user.id },
-        data: {
-          isOnline: true,
-          lastActiveAt: now,
-          lastSeen: now,
-        },
+        data: isTimerRunning
+          ? {
+              isOnline: true,
+              lastActiveAt: now,
+              lastSeen: now,
+            }
+          : {
+              isOnline: false,
+              lastSeen: now,
+            },
       }),
     ]);
 
@@ -704,6 +739,8 @@ export async function searchEmployeesForChatAction(
     }
 
     const q = query.trim();
+    const todayDate = new Date();
+    todayDate.setUTCHours(0, 0, 0, 0);
 
     const employees = await db.employee.findMany({
       where: {
@@ -731,6 +768,11 @@ export async function searchEmployeesForChatAction(
         isOnline: true,
         lastSeen: true,
         lastActiveAt: true,
+        attendances: {
+          where: { date: todayDate },
+          select: { currentStatus: true },
+          take: 1,
+        },
       },
       take: 20,
       orderBy: { firstName: "asc" },
@@ -739,18 +781,26 @@ export async function searchEmployeesForChatAction(
     const ONLINE_THRESHOLD_MS = 60 * 1000;
     const nowMs = Date.now();
 
-    const mapped = employees.map((e) => ({
-      id: e.id,
-      name: `${e.firstName} ${e.lastName}`,
-      email: e.workEmail,
-      department: e.department,
-      designation: e.designation,
-      isOnline:
-        e.isOnline &&
-        e.lastActiveAt !== null &&
-        nowMs - new Date(e.lastActiveAt).getTime() <= ONLINE_THRESHOLD_MS,
-      lastSeen: e.lastSeen ? e.lastSeen.toISOString() : null,
-    }));
+    const mapped = employees.map((e) => {
+      const todayAttendance = e.attendances?.[0];
+      const isTimerRunning =
+        todayAttendance?.currentStatus === TrackerStatus.ACTIVE ||
+        todayAttendance?.currentStatus === TrackerStatus.MEETING_MODE;
+
+      return {
+        id: e.id,
+        name: `${e.firstName} ${e.lastName}`,
+        email: e.workEmail,
+        department: e.department,
+        designation: e.designation,
+        isOnline:
+          e.isOnline &&
+          isTimerRunning &&
+          e.lastActiveAt !== null &&
+          nowMs - new Date(e.lastActiveAt).getTime() <= ONLINE_THRESHOLD_MS,
+        lastSeen: e.lastSeen ? e.lastSeen.toISOString() : null,
+      };
+    });
 
     return { success: true, data: mapped };
   } catch (error) {
@@ -798,15 +848,37 @@ export async function leaveGroupAction(conversationId: string): Promise<ActionRe
     });
 
     revalidatePath("/chat");
-    // Also touch user presence
+    // Also touch user presence based on active working hours
     const now = new Date();
+    const todayDate = new Date();
+    todayDate.setUTCHours(0, 0, 0, 0);
+
+    const attendance = await db.attendance.findUnique({
+      where: {
+        employeeId_date: {
+          employeeId: user.id,
+          date: todayDate,
+        },
+      },
+      select: { currentStatus: true },
+    });
+
+    const isTimerRunning =
+      attendance?.currentStatus === TrackerStatus.ACTIVE ||
+      attendance?.currentStatus === TrackerStatus.MEETING_MODE;
+
     await db.employee.update({
       where: { id: user.id },
-      data: {
-        isOnline: true,
-        lastActiveAt: now,
-        lastSeen: now,
-      },
+      data: isTimerRunning
+        ? {
+            isOnline: true,
+            lastActiveAt: now,
+            lastSeen: now,
+          }
+        : {
+            isOnline: false,
+            lastSeen: now,
+          },
     });
 
     return { success: true, data: true };
@@ -854,15 +926,37 @@ export async function markConversationAsReadAction(
       },
     });
 
-    // Also touch user presence
+    // Also touch user presence based on active working hours
     const now = new Date();
+    const todayDate = new Date();
+    todayDate.setUTCHours(0, 0, 0, 0);
+
+    const attendance = await db.attendance.findUnique({
+      where: {
+        employeeId_date: {
+          employeeId: user.id,
+          date: todayDate,
+        },
+      },
+      select: { currentStatus: true },
+    });
+
+    const isTimerRunning =
+      attendance?.currentStatus === TrackerStatus.ACTIVE ||
+      attendance?.currentStatus === TrackerStatus.MEETING_MODE;
+
     await db.employee.update({
       where: { id: user.id },
-      data: {
-        isOnline: true,
-        lastActiveAt: now,
-        lastSeen: now,
-      },
+      data: isTimerRunning
+        ? {
+            isOnline: true,
+            lastActiveAt: now,
+            lastSeen: now,
+          }
+        : {
+            isOnline: false,
+            lastSeen: now,
+          },
     });
 
     return { success: true, data: true };
@@ -918,7 +1012,8 @@ export async function getUnreadChatCountAction(): Promise<
 }
 
 /**
- * Lightweight heartbeat action to track online presence and last seen
+ * Lightweight heartbeat action to track online presence and last seen,
+ * strictly bound to active working hours (Attendance timer status).
  */
 export async function updatePresenceAction(
   status: "online" | "offline" = "online"
@@ -930,16 +1025,59 @@ export async function updatePresenceAction(
     }
 
     const now = new Date();
+
+    if (status === "offline") {
+      await db.employee.update({
+        where: { id: user.id },
+        data: {
+          isOnline: false,
+          lastSeen: now,
+        },
+      });
+      return { success: true, data: { isOnline: false } };
+    }
+
+    // Check today's attendance timer status
+    const todayDate = new Date();
+    todayDate.setUTCHours(0, 0, 0, 0);
+
+    const attendance = await db.attendance.findUnique({
+      where: {
+        employeeId_date: {
+          employeeId: user.id,
+          date: todayDate,
+        },
+      },
+      select: { currentStatus: true },
+    });
+
+    const isTimerRunning =
+      attendance?.currentStatus === TrackerStatus.ACTIVE ||
+      attendance?.currentStatus === TrackerStatus.MEETING_MODE;
+
+    if (!isTimerRunning) {
+      // Working hours timer is paused (IDLE), punched out, or not started - mark Offline
+      await db.employee.update({
+        where: { id: user.id },
+        data: {
+          isOnline: false,
+          lastSeen: now,
+        },
+      });
+      return { success: true, data: { isOnline: false } };
+    }
+
+    // Both browser session heartbeat AND working hours timer are actively running
     await db.employee.update({
       where: { id: user.id },
       data: {
-        isOnline: status === "online",
+        isOnline: true,
         lastActiveAt: now,
         lastSeen: now,
       },
     });
 
-    return { success: true, data: { isOnline: status === "online" } };
+    return { success: true, data: { isOnline: true } };
   } catch (error) {
     console.error("Error updating presence:", error);
     return { success: false, error: "Failed to update presence." };

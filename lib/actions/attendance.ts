@@ -259,6 +259,16 @@ export async function clockInAction(
       },
     });
 
+    // Sync chat presence: mark employee Online immediately on clock-in
+    await db.employee.update({
+      where: { id: employee.id },
+      data: {
+        isOnline: true,
+        lastActiveAt: now,
+        lastSeen: now,
+      },
+    });
+
     revalidatePath("/hrms");
     revalidatePath("/hrms/attendance");
 
@@ -363,6 +373,15 @@ export async function clockOutAction(
       },
     });
 
+    // Sync chat presence: immediately mark employee Offline and record exact lastSeen
+    await db.employee.update({
+      where: { id: employee.id },
+      data: {
+        isOnline: false,
+        lastSeen: now,
+      },
+    });
+
     revalidatePath("/hrms");
     revalidatePath("/hrms/attendance");
 
@@ -461,6 +480,27 @@ export async function updateTrackerStatusAction(
       },
     });
 
+    // Sync chat presence with active working status
+    if (newStatus === "ACTIVE") {
+      await db.employee.update({
+        where: { id: employee.id },
+        data: {
+          isOnline: true,
+          lastActiveAt: now,
+          lastSeen: now,
+        },
+      });
+    } else {
+      // Idle / paused break: immediately mark offline with lastSeen
+      await db.employee.update({
+        where: { id: employee.id },
+        data: {
+          isOnline: false,
+          lastSeen: now,
+        },
+      });
+    }
+
     revalidatePath("/hrms");
     revalidatePath("/hrms/attendance");
 
@@ -540,6 +580,16 @@ export async function startMeetingModeAction(
       where: { id: attendance.id },
       data: {
         currentStatus: TrackerStatus.MEETING_MODE,
+      },
+    });
+
+    // Sync chat presence: Meeting Mode counts towards active working hours
+    await db.employee.update({
+      where: { id: employee.id },
+      data: {
+        isOnline: true,
+        lastActiveAt: now,
+        lastSeen: now,
       },
     });
 
@@ -647,6 +697,16 @@ export async function stopMeetingModeAction(
       data: {
         currentStatus: TrackerStatus.ACTIVE,
         totalActiveHours,
+      },
+    });
+
+    // Sync chat presence: resumes ACTIVE working hours
+    await db.employee.update({
+      where: { id: employee.id },
+      data: {
+        isOnline: true,
+        lastActiveAt: now,
+        lastSeen: now,
       },
     });
 
