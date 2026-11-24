@@ -276,6 +276,101 @@ export function ChatClient({
     setShowMobileChat(false);
   };
 
+  // Handle toggle emoji reaction on a message (WhatsApp style)
+  const handleToggleReaction = async (messageId: string, emoji: string) => {
+    // 1. Optimistic UI update
+    setMessages((prev) =>
+      prev.map((msg) => {
+        if (msg.id !== messageId) return msg;
+
+        const currentReactions = msg.reactions || [];
+        const existingMyReaction = currentReactions.find((r) => r.hasReacted);
+        let nextReactions = [...currentReactions];
+
+        if (existingMyReaction && existingMyReaction.emoji === emoji) {
+          // Toggle off: remove or decrement
+          if (existingMyReaction.count <= 1) {
+            nextReactions = nextReactions.filter((r) => r.emoji !== emoji);
+          } else {
+            nextReactions = nextReactions.map((r) =>
+              r.emoji === emoji
+                ? {
+                    ...r,
+                    count: r.count - 1,
+                    hasReacted: false,
+                    users: r.users.filter((u) => u.id !== currentUserId),
+                  }
+                : r
+            );
+          }
+        } else {
+          // If already reacted with a different emoji, remove old reaction first
+          if (existingMyReaction) {
+            if (existingMyReaction.count <= 1) {
+              nextReactions = nextReactions.filter(
+                (r) => r.emoji !== existingMyReaction.emoji
+              );
+            } else {
+              nextReactions = nextReactions.map((r) =>
+                r.emoji === existingMyReaction.emoji
+                  ? {
+                      ...r,
+                      count: r.count - 1,
+                      hasReacted: false,
+                      users: r.users.filter((u) => u.id !== currentUserId),
+                    }
+                  : r
+              );
+            }
+          }
+
+          // Add / increment new target emoji reaction
+          const targetGroup = nextReactions.find((r) => r.emoji === emoji);
+          if (targetGroup) {
+            nextReactions = nextReactions.map((r) =>
+              r.emoji === emoji
+                ? {
+                    ...r,
+                    count: r.count + 1,
+                    hasReacted: true,
+                    users: [...r.users, { id: currentUserId, name: "You" }],
+                  }
+                : r
+            );
+          } else {
+            nextReactions.push({
+              emoji,
+              count: 1,
+              hasReacted: true,
+              users: [{ id: currentUserId, name: "You" }],
+            });
+          }
+        }
+
+        return { ...msg, reactions: nextReactions };
+      })
+    );
+
+    // 2. Persist to PostgreSQL via /api/chat/reactions
+    try {
+      const res = await fetch("/api/chat/reactions", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ messageId, emoji }),
+      });
+      const data = await res.json();
+      if (data.success && data.reactions) {
+        setMessages((prev) =>
+          prev.map((msg) =>
+            msg.id === messageId ? { ...msg, reactions: data.reactions } : msg
+          )
+        );
+      }
+    } catch (err) {
+      console.error("Error toggling message reaction:", err);
+    }
+  };
+
   return (
     <div className="relative h-full w-full rounded-[24px] sm:rounded-[28px] lg:rounded-[32px] bg-white/75 backdrop-blur-2xl border border-white/80 shadow-[0_12px_40px_rgba(0,0,0,0.03)] overflow-hidden flex flex-row min-h-0">
       {/* Ambient background blur */}
@@ -312,6 +407,7 @@ export function ChatClient({
           onOpenInfo={() => setInfoDrawerOpen(true)}
           onBackMobile={() => setShowMobileChat(false)}
           isLoadingMessages={isLoadingMessages}
+          onToggleReaction={handleToggleReaction}
         />
       </div>
 

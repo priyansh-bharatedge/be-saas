@@ -24,6 +24,7 @@ interface ChatWindowProps {
   onOpenInfo: () => void;
   onBackMobile: () => void;
   isLoadingMessages?: boolean;
+  onToggleReaction?: (messageId: string, emoji: string) => void;
 }
 
 export function ChatWindow({
@@ -34,6 +35,7 @@ export function ChatWindow({
   onOpenInfo,
   onBackMobile,
   isLoadingMessages,
+  onToggleReaction,
 }: ChatWindowProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
 
@@ -196,6 +198,7 @@ export function ChatWindow({
                 showDateSeparator={isFirstOfDay}
                 dateLabel={isFirstOfDay ? getDateLabel(msg.createdAt) : undefined}
                 isGroup={conversation.isGroup}
+                onToggleReaction={onToggleReaction}
               />
             );
           })

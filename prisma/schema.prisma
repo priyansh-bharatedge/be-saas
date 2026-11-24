@@ -819,6 +819,7 @@ model Employee {
   createdConversations ChatConversation[] @relation("CreatedConversations")
   chatParticipants     ChatParticipant[]  @relation("EmployeeChatParticipants")
   sentChatMessages     ChatMessage[]      @relation("SentChatMessages")
+  chatReactions        ChatMessageReaction[] @relation("EmployeeChatReactions")
 
   // Real-time Online & Last Seen Presence Tracking
   isOnline     Boolean   @default(false)
@@ -1048,6 +1049,7 @@ model ChatMessage {
   attachmentMimeType String?
   attachments        Json?
   isDeleted          Boolean          @default(false)
+  reactions          ChatMessageReaction[]
 
   createdAt          DateTime         @default(now())
 
@@ -1056,4 +1058,20 @@ model ChatMessage {
   @@index([createdAt])
   @@map("chat_messages")
 }
+
+model ChatMessageReaction {
+  id         String      @id @default(uuid())
+  messageId  String
+  message    ChatMessage @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  employeeId String
+  employee   Employee    @relation("EmployeeChatReactions", fields: [employeeId], references: [id], onDelete: Cascade)
+  emoji      String
+  createdAt  DateTime    @default(now())
+
+  @@unique([messageId, employeeId])
+  @@index([messageId])
+  @@index([employeeId])
+  @@map("chat_message_reactions")
+}
+
 

@@ -73,6 +73,14 @@ export interface MessageItem {
   createdAt: string;
   isSelf: boolean;
   status: "SENT" | "DELIVERED" | "READ";
+  reactions?: MessageReactionGroup[];
+}
+
+export interface MessageReactionGroup {
+  emoji: string;
+  count: number;
+  users: { id: string; name: string }[];
+  hasReacted: boolean;
 }
 
 /**
@@ -448,6 +456,18 @@ export async function getMessagesAction(
             designation: true,
           },
         },
+        reactions: {
+          include: {
+            employee: {
+              select: {
+                id: true,
+                firstName: true,
+                lastName: true,
+              },
+            },
+          },
+          orderBy: { createdAt: "asc" },
+        },
       },
     });
 
@@ -467,6 +487,35 @@ export async function getMessagesAction(
       } else {
         status = "READ";
       }
+
+      // Group reactions by emoji
+      const reactionMap = new Map<
+        string,
+        { count: number; users: { id: string; name: string }[]; hasReacted: boolean }
+      >();
+      (m.reactions || []).forEach((r) => {
+        const group = reactionMap.get(r.emoji) || {
+          count: 0,
+          users: [],
+          hasReacted: false,
+        };
+        group.count += 1;
+        const userName = `${r.employee.firstName} ${r.employee.lastName}`.trim();
+        group.users.push({ id: r.employee.id, name: userName });
+        if (r.employee.id === user.id) {
+          group.hasReacted = true;
+        }
+        reactionMap.set(r.emoji, group);
+      });
+
+      const formattedReactions: MessageReactionGroup[] = Array.from(
+        reactionMap.entries()
+      ).map(([emoji, data]) => ({
+        emoji,
+        count: data.count,
+        users: data.users,
+        hasReacted: data.hasReacted,
+      }));
 
       // Parse multi-attachment JSON or fallback to legacy single attachment fields
       let parsedAttachments: ChatAttachmentItem[] | undefined = undefined;
@@ -506,6 +555,7 @@ export async function getMessagesAction(
         createdAt: m.createdAt.toISOString(),
         isSelf,
         status,
+        reactions: formattedReactions,
       };
     });
 
@@ -714,6 +764,7 @@ export async function sendMessageAction(data: {
       createdAt: message.createdAt.toISOString(),
       isSelf: true,
       status: "DELIVERED",
+      reactions: [],
     };
 
     return { success: true, data: formatted };
@@ -1083,3 +1134,128 @@ export async function updatePresenceAction(
     return { success: false, error: "Failed to update presence." };
   }
 }
+
+/**
+ * Toggles an emoji reaction on a message for the current user.
+ * - If the user has already reacted with the same emoji, the reaction is removed.
+ * - If the user has reacted with a different emoji, it is updated to the new emoji.
+ * - If the user has not reacted, a new reaction is created.
+ * Returns the aggregated reactions for the message.
+ */
+export async function toggleMessageReactionAction({
+  messageId,
+  emoji,
+}: {
+  messageId: string;
+  emoji: string;
+}): Promise<ActionResult<{ reactions: MessageReactionGroup[] }>> {
+  try {
+    const user = await getCurrentUser();
+    if (!user) {
+      return { success: false, error: "Unauthorized. Please log in." };
+    }
+
+    const trimmedEmoji = emoji.trim();
+    if (!trimmedEmoji) {
+      return { success: false, error: "Emoji cannot be empty." };
+    }
+
+    const message = await db.chatMessage.findUnique({
+      where: { id: messageId },
+      select: { id: true, conversationId: true },
+    });
+
+    if (!message) {
+      return { success: false, error: "Message not found." };
+    }
+
+    // 403 Security Check: Current user must be a participant in the conversation
+    await assertConversationMembership(message.conversationId, user.id);
+
+    // Look for existing reaction by this user on this message
+    const existing = await db.chatMessageReaction.findUnique({
+      where: {
+        messageId_employeeId: {
+          messageId,
+          employeeId: user.id,
+        },
+      },
+    });
+
+    if (existing) {
+      if (existing.emoji === trimmedEmoji) {
+        // Toggle off (remove)
+        await db.chatMessageReaction.delete({
+          where: { id: existing.id },
+        });
+      } else {
+        // Switch to new emoji
+        await db.chatMessageReaction.update({
+          where: { id: existing.id },
+          data: { emoji: trimmedEmoji },
+        });
+      }
+    } else {
+      // Create new reaction
+      await db.chatMessageReaction.create({
+        data: {
+          messageId,
+          employeeId: user.id,
+          emoji: trimmedEmoji,
+        },
+      });
+    }
+
+    // Fetch updated reactions for this message to return real-time grouped state
+    const allReactions = await db.chatMessageReaction.findMany({
+      where: { messageId },
+      include: {
+        employee: {
+          select: {
+            id: true,
+            firstName: true,
+            lastName: true,
+          },
+        },
+      },
+      orderBy: { createdAt: "asc" },
+    });
+
+    const reactionMap = new Map<
+      string,
+      { count: number; users: { id: string; name: string }[]; hasReacted: boolean }
+    >();
+    allReactions.forEach((r) => {
+      const group = reactionMap.get(r.emoji) || {
+        count: 0,
+        users: [],
+        hasReacted: false,
+      };
+      group.count += 1;
+      const userName = `${r.employee.firstName} ${r.employee.lastName}`.trim();
+      group.users.push({ id: r.employee.id, name: userName });
+      if (r.employee.id === user.id) {
+        group.hasReacted = true;
+      }
+      reactionMap.set(r.emoji, group);
+    });
+
+    const formattedReactions: MessageReactionGroup[] = Array.from(
+      reactionMap.entries()
+    ).map(([emojiKey, data]) => ({
+      emoji: emojiKey,
+      count: data.count,
+      users: data.users,
+      hasReacted: data.hasReacted,
+    }));
+
+    return { success: true, data: { reactions: formattedReactions } };
+  } catch (error) {
+    console.error("Error toggling message reaction:", error);
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : "Failed to toggle reaction.",
+    };
+  }
+}
+

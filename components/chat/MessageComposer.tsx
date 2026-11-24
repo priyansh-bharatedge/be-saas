@@ -1,8 +1,9 @@
 "use client";
 
 import { useState, useRef, KeyboardEvent } from "react";
-import { Send, Paperclip, X, Loader2, File, Image as ImageIcon, FileText } from "lucide-react";
+import { Send, Paperclip, X, Loader2, File, Image as ImageIcon, FileText, Smile } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { EmojiPickerPopover } from "./EmojiPickerPopover";
 
 export interface StagedAttachment {
   url: string;
@@ -36,8 +37,29 @@ export function MessageComposer({
   const [isUploading, setIsUploading] = useState(false);
   const [uploadStatus, setUploadStatus] = useState<string | null>(null);
   const [isSending, setIsSending] = useState(false);
+  const [isEmojiPickerOpen, setIsEmojiPickerOpen] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+
+  const handleInsertEmoji = (emoji: string) => {
+    const textarea = textareaRef.current;
+    if (!textarea) {
+      setText((prev) => prev + emoji);
+      return;
+    }
+
+    const start = textarea.selectionStart ?? text.length;
+    const end = textarea.selectionEnd ?? text.length;
+    const nextText = text.substring(0, start) + emoji + text.substring(end);
+    setText(nextText);
+
+    // Keep textarea focused and place cursor immediately after inserted emoji
+    setTimeout(() => {
+      textarea.focus();
+      const newCursorPos = start + emoji.length;
+      textarea.setSelectionRange(newCursorPos, newCursorPos);
+    }, 10);
+  };
 
   const handleKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === "Enter" && !e.shiftKey) {
@@ -121,6 +143,7 @@ export function MessageComposer({
 
       setText("");
       setStagedAttachments([]);
+      setIsEmojiPickerOpen(false);
       if (textareaRef.current) {
         textareaRef.current.style.height = "auto";
       }
@@ -226,6 +249,33 @@ export function MessageComposer({
             <Paperclip className="h-5 w-5" />
           )}
         </Button>
+
+        {/* Emoji Picker Button & Popover */}
+        <div className="relative shrink-0">
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon"
+            onClick={() => setIsEmojiPickerOpen((prev) => !prev)}
+            disabled={disabled || isSending}
+            className={`h-10 w-10 rounded-2xl shrink-0 transition-colors ${
+              isEmojiPickerOpen
+                ? "text-[#588594] bg-[#EBF3F6]"
+                : "text-slate-500 hover:text-[#588594] hover:bg-[#EBF3F6]/80"
+            }`}
+            title="Insert emoji"
+          >
+            <Smile className="h-5 w-5" />
+          </Button>
+
+          <EmojiPickerPopover
+            isOpen={isEmojiPickerOpen}
+            onClose={() => setIsEmojiPickerOpen(false)}
+            onSelectEmoji={handleInsertEmoji}
+            position="top-left"
+            title="Emojis"
+          />
+        </div>
 
         {/* Textarea */}
         <div className="flex-1 rounded-2xl bg-slate-50 border border-slate-200/80 focus-within:border-[#588594] focus-within:ring-1 focus-within:ring-[#588594] focus-within:bg-white transition-all overflow-hidden p-1.5 flex items-end">
