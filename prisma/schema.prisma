@@ -55,7 +55,10 @@ enum PaymentVerificationStatus {
 enum LegalStatus {
   PENDING
   UNDER_REVIEW
+  IN_PROGRESS
   DRAFTED
+  SENT
+  RECEIVED
   EXECUTED
   REJECTED
 }
@@ -601,12 +604,17 @@ model InternalOperation {
   serviceName     String
   teamType        String
   stage           OperationStage @default(OPERATION)
-  internalStage   String         @default("INITIATION")
+  internalStage   String         @default("Doc Collection")
   status          String         @default("IN_PROGRESS")
   assignedTlId    String?
   assignedTl      Employee?      @relation("AssignedTlOperations", fields: [assignedTlId], references: [id], onDelete: SetNull)
   assignedTmId    String?
   assignedTm      Employee?      @relation("AssignedTmOperations", fields: [assignedTmId], references: [id], onDelete: SetNull)
+  caCs1Id         String?
+  caCs1           Employee?      @relation("AssignedCaCs1Operations", fields: [caCs1Id], references: [id], onDelete: SetNull)
+  caCs2Id         String?
+  caCs2           Employee?      @relation("AssignedCaCs2Operations", fields: [caCs2Id], references: [id], onDelete: SetNull)
+  assignedEmployeeIds String[]   @default([])
   workflowData    Json?
   qualityScore    Int?
   qualityFeedback String?        @db.Text
@@ -621,6 +629,8 @@ model InternalOperation {
   @@index([serviceId])
   @@index([assignedTlId])
   @@index([assignedTmId])
+  @@index([caCs1Id])
+  @@index([caCs2Id])
   @@index([stage])
   @@map("internal_operations")
 }
@@ -839,8 +849,10 @@ model Employee {
   verifiedPayments      PaymentRecord[]     @relation("VerifiedPayments")
   recordedPayments      PaymentRecord[]     @relation("RecordedPayments")
   uploadedDealDocs      DealDocument[]      @relation("UploadedDealDocs")
-  assignedTlOperations  InternalOperation[] @relation("AssignedTlOperations")
-  assignedTmOperations  InternalOperation[] @relation("AssignedTmOperations")
+  assignedTlOperations    InternalOperation[] @relation("AssignedTlOperations")
+  assignedTmOperations    InternalOperation[] @relation("AssignedTmOperations")
+  assignedCaCs1Operations InternalOperation[] @relation("AssignedCaCs1Operations")
+  assignedCaCs2Operations InternalOperation[] @relation("AssignedCaCs2Operations")
   salesTargets          SalesTarget[]       @relation("BdmSalesTargets")
   salesTargetsSet       SalesTarget[]       @relation("HodSalesTargetsSet")
 

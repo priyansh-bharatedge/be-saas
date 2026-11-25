@@ -11,6 +11,8 @@ import {
   QualityAuditFormData,
   SerializedOperation,
   OperationMasterData,
+  EmployeeLookupItem,
+  normalizeTeamType,
 } from "@/lib/validations/operation";
 import {
   OperationStage,
@@ -27,11 +29,62 @@ export interface ActionResult<T = unknown> {
 }
 
 /**
- * Retrieves child operations with 3-tab filtering for Quality and role-based assignment visibility
+ * Extracts all employee IDs referenced in workflow data (stage Name fields, social calendar, etc.)
+ */
+function extractEmployeeIdsFromWorkflow(
+  workflowData: Record<string, any> | null | undefined,
+  extraIds: (string | null | undefined)[]
+): string[] {
+  const ids = new Set<string>();
+
+  extraIds.forEach((id) => {
+    if (id && typeof id === "string" && id.trim()) {
+      ids.add(id.trim());
+    }
+  });
+
+  if (!workflowData || typeof workflowData !== "object") {
+    return Array.from(ids);
+  }
+
+  // Helper recursive extraction
+  function scan(obj: any) {
+    if (!obj || typeof obj !== "object") return;
+    if (Array.isArray(obj)) {
+      obj.forEach((item) => scan(item));
+      return;
+    }
+
+    for (const key of Object.keys(obj)) {
+      const val = obj[key];
+      if (
+        (key === "employeeId" || key === "assignedEmployeeId" || key === "nameEmployeeId") &&
+        typeof val === "string" &&
+        val.trim()
+      ) {
+        ids.add(val.trim());
+      } else if (typeof val === "object") {
+        scan(val);
+      }
+    }
+  }
+
+  scan(workflowData);
+  return Array.from(ids);
+}
+
+/**
+ * Retrieves child operations with 3-tab filtering, dynamic filters, and strict assignment RBAC
  */
 export async function getOperationsAction(params: {
   tab?: "ALL" | "COMPLETED" | "PENDING";
   teamType?: string;
+  stage?: string;
+  companyType?: string;
+  assignedTlId?: string;
+  assignedTmId?: string;
+  dateFrom?: string;
+  dateTo?: string;
   search?: string;
 } = {}): Promise<
   ActionResult<{
@@ -39,6 +92,7 @@ export async function getOperationsAction(params: {
     isOperationHod: boolean;
     isOperationTl: boolean;
     isQualityUser: boolean;
+    isLegalUser: boolean;
     canManageAll: boolean;
   }>
 > {
@@ -47,50 +101,96 @@ export async function getOperationsAction(params: {
     if (!user) return { success: false, error: "Unauthorized." };
 
     const scope = await getCrmUserScope(user);
-    const userDept = user.department?.toLowerCase() || "";
-    const isQualityUser = userDept === "quality" || scope.canManageAll;
+    const userDept = (user.department || "").toLowerCase().trim();
+    const isSuperAdmin = user.role === "Admin" || user.systemRole === "SUPER_ADMIN";
+    const isQualityUser = userDept === "quality" || isSuperAdmin;
+    const isLegalUser = userDept === "legal" || isSuperAdmin;
     const isOperationHod =
-      (userDept === "operation" && user.systemRole === "ADMIN_HOD") ||
-      scope.canManageAll;
+      (userDept === "operation" && user.systemRole === "ADMIN_HOD") || isSuperAdmin;
     const isOperationTl =
       userDept === "operation" &&
       (user.systemRole === "TEAM_LEADER" || user.systemRole === "ADMIN_HOD");
 
-    const { tab = "ALL", teamType = "ALL", search = "" } = params;
+    const {
+      tab = "ALL",
+      teamType = "ALL",
+      stage = "ALL",
+      companyType = "ALL",
+      assignedTlId,
+      assignedTmId,
+      dateFrom,
+      dateTo,
+      search = "",
+    } = params;
 
     const where: Prisma.InternalOperationWhereInput = {};
 
-    // Dynamic Tab filtering (Quality & Operations view)
+    // 1. Dynamic Tab filtering (Quality & Operations view)
     if (tab === "COMPLETED") {
       where.stage = OperationStage.QUALITY;
     } else if (tab === "PENDING") {
       where.stage = OperationStage.OPERATION;
     }
 
-    // Team Type filter
+    // 2. Team Type filter
     if (teamType && teamType !== "ALL") {
-      where.teamType = teamType;
+      where.teamType = { contains: teamType.replace(/^Team\s+/i, ""), mode: "insensitive" };
     }
 
-    // RBAC Scoping
-    // - Quality, Operation HOD, and SuperAdmin see all operations
-    // - Operation TL sees all operations where assignedTlId === user.id or team member operations
-    // - Operation TM sees only operations where assignedTmId === user.id
-    if (!isQualityUser && !isOperationHod && !scope.canViewAll) {
-      if (isOperationTl) {
-        where.OR = [
-          { assignedTlId: user.id },
-          { assignedTm: { reportingManagerId: user.id } },
-        ];
-      } else {
-        where.assignedTmId = user.id;
+    // 3. Stage dropdown filter
+    if (stage && stage !== "ALL") {
+      where.internalStage = stage;
+    }
+
+    // 4. Assigned TL / TM filters
+    if (assignedTlId && assignedTlId !== "ALL") {
+      where.assignedTlId = assignedTlId;
+    }
+    if (assignedTmId && assignedTmId !== "ALL") {
+      where.assignedTmId = assignedTmId;
+    }
+
+    // 5. Date Range Filter (Booking date or Creation date)
+    if (dateFrom || dateTo) {
+      where.createdAt = {};
+      if (dateFrom) {
+        where.createdAt.gte = new Date(dateFrom);
+      }
+      if (dateTo) {
+        const to = new Date(dateTo);
+        to.setHours(23, 59, 59, 999);
+        where.createdAt.lte = to;
       }
     }
 
-    // Search query
+    // 6. Strict RBAC Visibility Rules:
+    // - Operation HOD, SUPER_ADMIN, Quality, and Legal (read-view) can see all records
+    // - Assigned employees (TL, TM, CA/CS 1, CA/CS 2, or anyone in assignedEmployeeIds): see only assigned records
+    if (!isSuperAdmin && !isOperationHod && !isQualityUser && !isLegalUser) {
+      if (isOperationTl) {
+        where.OR = [
+          { assignedTlId: user.id },
+          { assignedTmId: user.id },
+          { caCs1Id: user.id },
+          { caCs2Id: user.id },
+          { assignedEmployeeIds: { has: user.id } },
+          { assignedTm: { reportingManagerId: user.id } },
+        ];
+      } else {
+        where.OR = [
+          { assignedTmId: user.id },
+          { assignedTlId: user.id },
+          { caCs1Id: user.id },
+          { caCs2Id: user.id },
+          { assignedEmployeeIds: { has: user.id } },
+        ];
+      }
+    }
+
+    // 7. Search query
     if (search.trim()) {
       const q = search.trim();
-      const conditions: Prisma.InternalOperationWhereInput[] = [
+      const searchConditions: Prisma.InternalOperationWhereInput[] = [
         { operationNumber: { contains: q, mode: "insensitive" } },
         { serviceName: { contains: q, mode: "insensitive" } },
         { deal: { dealNumber: { contains: q, mode: "insensitive" } } },
@@ -99,9 +199,9 @@ export async function getOperationsAction(params: {
       ];
 
       if (where.OR) {
-        where.AND = [{ OR: conditions }];
+        where.AND = [{ OR: searchConditions }];
       } else {
-        where.OR = conditions;
+        where.OR = searchConditions;
       }
     }
 
@@ -116,56 +216,86 @@ export async function getOperationsAction(params: {
             title: true,
             contactName: true,
             contactPhone: true,
+            contactEmail: true,
             companyName: true,
             bookingDate: true,
+            totalValue: true,
+            value: true,
             createdAt: true,
           },
         },
-        assignedTl: { select: { firstName: true, lastName: true } },
-        assignedTm: { select: { firstName: true, lastName: true } },
+        assignedTl: { select: { id: true, firstName: true, lastName: true } },
+        assignedTm: { select: { id: true, firstName: true, lastName: true } },
+        caCs1: { select: { id: true, firstName: true, lastName: true } },
+        caCs2: { select: { id: true, firstName: true, lastName: true } },
       },
     });
 
-    const serialized: SerializedOperation[] = records.map((r) => ({
-      id: r.id,
-      operationNumber: r.operationNumber,
-      dealId: r.dealId,
-      dealNumber: r.deal.dealNumber || "DL-0000",
-      dealTitle: r.deal.title,
-      clientName: r.deal.contactName || "Client",
-      clientPhone: r.deal.contactPhone || "",
-      companyName: r.deal.companyName,
-      bookingDate: r.deal.bookingDate
-        ? r.deal.bookingDate.toISOString().split("T")[0]
-        : r.deal.createdAt.toISOString().split("T")[0],
+    // Optional companyType in-memory filter if not on deal query
+    let filteredRecords = records;
+    if (companyType && companyType !== "ALL") {
+      filteredRecords = records.filter(
+        (r) =>
+          (r.workflowData as any)?.companyType?.toLowerCase() === companyType.toLowerCase()
+      );
+    }
 
-      dealServiceId: r.dealServiceId,
-      serviceId: r.serviceId,
-      serviceName: r.serviceName,
-      teamType: r.teamType,
+    const serialized: SerializedOperation[] = filteredRecords.map((r) => {
+      const dealVal = r.deal.totalValue ? Number(r.deal.totalValue) : Number(r.deal.value || 0);
 
-      stage: r.stage,
-      internalStage: r.internalStage,
-      status: r.status,
+      return {
+        id: r.id,
+        operationNumber: r.operationNumber,
+        dealId: r.dealId,
+        dealNumber: r.deal.dealNumber || "DL-0000",
+        dealTitle: r.deal.title,
+        clientName: r.deal.contactName || "Client",
+        clientPhone: r.deal.contactPhone || "",
+        clientEmail: r.deal.contactEmail || null,
+        companyName: r.deal.companyName,
+        companyType: (r.workflowData as any)?.companyType || null,
+        bookingDate: r.deal.bookingDate
+          ? r.deal.bookingDate.toISOString().split("T")[0]
+          : r.deal.createdAt.toISOString().split("T")[0],
+        dealValue: dealVal,
 
-      assignedTlId: r.assignedTlId,
-      assignedTlName: r.assignedTl
-        ? `${r.assignedTl.firstName} ${r.assignedTl.lastName}`.trim()
-        : null,
-      assignedTmId: r.assignedTmId,
-      assignedTmName: r.assignedTm
-        ? `${r.assignedTm.firstName} ${r.assignedTm.lastName}`.trim()
-        : null,
+        dealServiceId: r.dealServiceId,
+        serviceId: r.serviceId,
+        serviceName: r.serviceName,
+        teamType: normalizeTeamType(r.teamType),
 
-      workflowData: (r.workflowData as Record<string, any>) || {},
-      qualityScore: r.qualityScore,
-      qualityFeedback: r.qualityFeedback,
-      dueDate: r.dueDate ? r.dueDate.toISOString().split("T")[0] : null,
-      completionDate: r.completionDate ? r.completionDate.toISOString() : null,
+        stage: r.stage,
+        internalStage: r.internalStage || "Doc Collection",
+        status: r.status,
 
-      createdAt: r.createdAt.toISOString(),
-      updatedAt: r.updatedAt.toISOString(),
-    }));
+        assignedTlId: r.assignedTlId,
+        assignedTlName: r.assignedTl
+          ? `${r.assignedTl.firstName} ${r.assignedTl.lastName}`.trim()
+          : null,
+        assignedTmId: r.assignedTmId,
+        assignedTmName: r.assignedTm
+          ? `${r.assignedTm.firstName} ${r.assignedTm.lastName}`.trim()
+          : null,
+        caCs1Id: r.caCs1Id,
+        caCs1Name: r.caCs1
+          ? `${r.caCs1.firstName} ${r.caCs1.lastName}`.trim()
+          : null,
+        caCs2Id: r.caCs2Id,
+        caCs2Name: r.caCs2
+          ? `${r.caCs2.firstName} ${r.caCs2.lastName}`.trim()
+          : null,
+        assignedEmployeeIds: r.assignedEmployeeIds || [],
+
+        workflowData: (r.workflowData as Record<string, any>) || {},
+        qualityScore: r.qualityScore,
+        qualityFeedback: r.qualityFeedback,
+        dueDate: r.dueDate ? r.dueDate.toISOString().split("T")[0] : null,
+        completionDate: r.completionDate ? r.completionDate.toISOString() : null,
+
+        createdAt: r.createdAt.toISOString(),
+        updatedAt: r.updatedAt.toISOString(),
+      };
+    });
 
     return {
       success: true,
@@ -174,7 +304,8 @@ export async function getOperationsAction(params: {
         isOperationHod,
         isOperationTl,
         isQualityUser,
-        canManageAll: scope.canManageAll,
+        isLegalUser,
+        canManageAll: isSuperAdmin || isOperationHod,
       },
     };
   } catch (error: any) {
@@ -184,7 +315,8 @@ export async function getOperationsAction(params: {
 }
 
 /**
- * Auto-Spawns 1 Child InternalOperation per service item in the Parent Deal
+ * Auto-Spawns 1 Child InternalOperation per service item in the Parent Deal.
+ * Sets inherited Team Type and initializes structured workflow data.
  */
 export async function autoSpawnDealOperationsAction(
   dealId: string
@@ -212,9 +344,42 @@ export async function autoSpawnDealOperationsAction(
         (op) => op.dealServiceId === s.id
       );
 
+      const normalizedTeam = normalizeTeamType(s.teamType);
+
       if (!existing) {
         count++;
         const operationNumber = `OP-${new Date().getFullYear()}-${String(count).padStart(4, "0")}`;
+
+        // Initialize clean default workflow data per team type
+        const initialWorkflowData: Record<string, any> = {
+          companyType: (deal as any).companyType || "PVT LTD",
+          afterAllocation: "No",
+          dealServiceId: s.id,
+        };
+
+        if (normalizedTeam === "Incorporation") {
+          initialWorkflowData.docCollection = { status: "Pending" };
+          initialWorkflowData.nameApplication = { status: "In-process", resubmissions: [] };
+          initialWorkflowData.dscCreation = { status: "Pending" };
+          initialWorkflowData.finalFiling = { status: "Pending", resubmissions: [] };
+        } else if (normalizedTeam === "Compliance") {
+          initialWorkflowData.docCollection = { status: "Pending" };
+          initialWorkflowData.directorItr = { status: "Pending", fileRequired: "Yes", docCollection: "No" };
+          initialWorkflowData.accounting = { status: "Pending", docCollection: "Pending" };
+          initialWorkflowData.audit = { status: "Pending", docCollection: "Pending" };
+          initialWorkflowData.companyItr = { status: "Pending", document: "Yes" };
+        } else if (normalizedTeam === "Funding") {
+          initialWorkflowData.dprPitchDeck = { status: "In-process" };
+          initialWorkflowData.finance = { status: "Pending" };
+          initialWorkflowData.applicationSubmission = { status: "Pending" };
+        } else if (normalizedTeam === "Certification") {
+          initialWorkflowData.docCollectionDsc = { status: "Pending" };
+          initialWorkflowData.finalApplication = { status: "Pending" };
+        } else if (normalizedTeam === "Digital Marketing") {
+          initialWorkflowData.serviceScope = { status: "In-process", serviceTrack: "Website" };
+          initialWorkflowData.executionTracker = { status: "Pending" };
+          initialWorkflowData.socialMediaCalendar = [];
+        }
 
         await db.internalOperation.create({
           data: {
@@ -223,17 +388,23 @@ export async function autoSpawnDealOperationsAction(
             dealServiceId: s.id,
             serviceId: s.serviceId,
             serviceName: s.serviceName,
-            teamType: s.teamType || "Team Incorporation",
+            teamType: normalizedTeam,
             stage: OperationStage.OPERATION,
-            internalStage: "Initiation",
-            status: "IN_PROGRESS",
-            workflowData: {
-              inclusions: s.remarks || "",
-              dealServiceId: s.id,
-            },
+            internalStage: "Doc Collection",
+            status: "In-process",
+            assignedEmployeeIds: [],
+            workflowData: initialWorkflowData,
           },
         });
         spawnedCount++;
+      } else {
+        // Sync team type if modified in Legal
+        if (existing.teamType !== normalizedTeam) {
+          await db.internalOperation.update({
+            where: { id: existing.id },
+            data: { teamType: normalizedTeam },
+          });
+        }
       }
     }
 
@@ -247,12 +418,12 @@ export async function autoSpawnDealOperationsAction(
         select: { id: true },
       });
 
-      if (operationLeaders.length > 0) {
+      if (operationLeaders.length > 0 && spawnedCount > 0) {
         await db.notification.createMany({
           data: operationLeaders.map((emp) => ({
             recipientId: emp.id,
             title: `New Operations Spawned (${deal.dealNumber})`,
-            message: `${spawnedCount} operational execution file(s) auto-spawned for ${deal.companyName}. Please assign Team Leader & TM.`,
+            message: `${spawnedCount} operational execution file(s) spawned for ${deal.companyName}. Please assign Team Leader & TM.`,
             type: NotificationType.ACTION_REQUIRED,
             actionUrl: "/crm/operations",
           })),
@@ -273,12 +444,15 @@ export async function autoSpawnDealOperationsAction(
 }
 
 /**
- * HOD / TL Action: Assigns Team Leader and Team Member to an operation child record
+ * HOD / TL Action: Assigns TL, TM, and CA/CS 1 & 2 to an operation child record.
+ * Automatically sends notifications and updates assignedEmployeeIds.
  */
 export async function updateOperationAssignmentAction(
   operationId: string,
   assignedTlId?: string,
-  assignedTmId?: string
+  assignedTmId?: string,
+  caCs1Id?: string,
+  caCs2Id?: string
 ): Promise<ActionResult> {
   try {
     const user = await getCurrentUser();
@@ -291,28 +465,51 @@ export async function updateOperationAssignmentAction(
 
     if (!operation) return { success: false, error: "Operation record not found." };
 
+    // Recompute assignedEmployeeIds
+    const allAssigned = extractEmployeeIdsFromWorkflow(
+      operation.workflowData as any,
+      [assignedTlId, assignedTmId, caCs1Id, caCs2Id]
+    );
+
     await db.internalOperation.update({
       where: { id: operationId },
       data: {
         assignedTlId: assignedTlId || null,
         assignedTmId: assignedTmId || null,
+        caCs1Id: caCs1Id || null,
+        caCs2Id: caCs2Id || null,
+        assignedEmployeeIds: allAssigned,
       },
     });
 
-    // Notify assigned TM
-    if (assignedTmId) {
+    // Notify newly assigned personnel
+    const newAssignments: { id: string; roleName: string }[] = [];
+    if (assignedTlId && assignedTlId !== operation.assignedTlId) {
+      newAssignments.push({ id: assignedTlId, roleName: "Team Leader" });
+    }
+    if (assignedTmId && assignedTmId !== operation.assignedTmId) {
+      newAssignments.push({ id: assignedTmId, roleName: "Team Member" });
+    }
+    if (caCs1Id && caCs1Id !== operation.caCs1Id) {
+      newAssignments.push({ id: caCs1Id, roleName: "CA / CS 1" });
+    }
+    if (caCs2Id && caCs2Id !== operation.caCs2Id) {
+      newAssignments.push({ id: caCs2Id, roleName: "CA / CS 2" });
+    }
+
+    for (const a of newAssignments) {
       try {
         await db.notification.create({
           data: {
-            recipientId: assignedTmId,
-            title: `Assigned to Operation ${operation.operationNumber}`,
-            message: `You have been assigned to ${operation.serviceName} for ${operation.deal.companyName} (${operation.teamType}).`,
+            recipientId: a.id,
+            title: `Assigned as ${a.roleName} (${operation.operationNumber})`,
+            message: `You have been assigned as ${a.roleName} for ${operation.serviceName} (${operation.teamType}) under ${operation.deal.companyName}.`,
             type: NotificationType.ACTION_REQUIRED,
-            actionUrl: "/crm/operations",
+            actionUrl: `/crm/operations?op=${operation.operationNumber}`,
           },
         });
       } catch (err) {
-        console.warn("[Operation TM Notification Error]:", err);
+        console.warn("[Operation Assignment Notification Error]:", err);
       }
     }
 
@@ -325,7 +522,9 @@ export async function updateOperationAssignmentAction(
 }
 
 /**
- * TM / TL Action: Updates operation stage, workflow data, and completion timestamps
+ * TM / TL Action: Updates operation stage, workflow data, and completion timestamps.
+ * Server-Enforces RBAC: unassigned staff cannot modify child records.
+ * Syncs assignedEmployeeIds across every stage's Name employee selector.
  */
 export async function updateOperationWorkflowAction(
   operationId: string,
@@ -337,11 +536,47 @@ export async function updateOperationWorkflowAction(
 
     const parsed = operationFormSchema.parse(raw);
 
+    const operation = await db.internalOperation.findUnique({
+      where: { id: operationId },
+      include: { deal: true },
+    });
+
+    if (!operation) return { success: false, error: "Operation record not found." };
+
+    const isSuperAdmin = user.role === "Admin" || user.systemRole === "SUPER_ADMIN";
+    const isOperationHod =
+      (user.department?.toLowerCase().includes("operation") && user.systemRole === "ADMIN_HOD") ||
+      isSuperAdmin;
+
+    const isAssigned =
+      operation.assignedTlId === user.id ||
+      operation.assignedTmId === user.id ||
+      operation.caCs1Id === user.id ||
+      operation.caCs2Id === user.id ||
+      operation.assignedEmployeeIds.includes(user.id);
+
+    if (!isSuperAdmin && !isOperationHod && !isAssigned) {
+      return { success: false, error: "403 Forbidden: You are not assigned to this operation." };
+    }
+
+    // Extract all assigned employee IDs from workflowData + common headers
+    const newAssignedEmployeeIds = extractEmployeeIdsFromWorkflow(
+      parsed.workflowData,
+      [parsed.assignedTlId, parsed.assignedTmId, parsed.caCs1Id, parsed.caCs2Id]
+    );
+
+    // Identify newly assigned employees to notify
+    const existingIds = new Set(operation.assignedEmployeeIds);
+    const newlyAddedIds = newAssignedEmployeeIds.filter((id) => !existingIds.has(id) && id !== user.id);
+
     await db.internalOperation.update({
       where: { id: operationId },
       data: {
         assignedTlId: parsed.assignedTlId || null,
         assignedTmId: parsed.assignedTmId || null,
+        caCs1Id: parsed.caCs1Id || null,
+        caCs2Id: parsed.caCs2Id || null,
+        assignedEmployeeIds: newAssignedEmployeeIds,
         internalStage: parsed.internalStage,
         status: parsed.status,
         dueDate: parsed.dueDate ? new Date(parsed.dueDate) : null,
@@ -350,6 +585,23 @@ export async function updateOperationWorkflowAction(
         qualityFeedback: parsed.qualityFeedback || null,
       },
     });
+
+    // Send notifications to newly assigned employees
+    if (newlyAddedIds.length > 0) {
+      try {
+        await db.notification.createMany({
+          data: newlyAddedIds.map((recId) => ({
+            recipientId: recId,
+            title: `Assigned to Stage in ${operation.operationNumber}`,
+            message: `You have been assigned to an execution workflow step for ${operation.serviceName} (${operation.deal.companyName}).`,
+            type: NotificationType.ACTION_REQUIRED,
+            actionUrl: `/crm/operations?op=${operation.operationNumber}`,
+          })),
+        });
+      } catch (err) {
+        console.warn("[Stage Assignment Notification Error]:", err);
+      }
+    }
 
     revalidatePath("/crm/operations");
     revalidatePath("/crm/deals");
@@ -360,9 +612,9 @@ export async function updateOperationWorkflowAction(
 }
 
 /**
- * TM / TL Action: Sends Operation child record to Quality.
- * Automatic Parent Roll-Up: If ALL sibling child records for the Parent Deal reach Quality,
- * automatically updates the Parent Deal's stage/status to QUALITY!
+ * TM / TL Action: Sends Operation child record to Quality (Closed Won).
+ * Automatic Parent Roll-Up: When ALL child records of a Parent Deal reach Quality,
+ * automatically updates the Parent Deal's stage/status to Quality!
  */
 export async function sendOperationToQualityAction(
   operationId: string
@@ -383,7 +635,8 @@ export async function sendOperationToQualityAction(
       where: { id: operationId },
       data: {
         stage: OperationStage.QUALITY,
-        internalStage: "Completed — Ready for Quality Audit",
+        internalStage: "Closed Won",
+        status: "Approved",
         completionDate: new Date(),
       },
     });
@@ -407,6 +660,7 @@ export async function sendOperationToQualityAction(
         where: { id: operation.dealId },
         data: {
           accountsStatus: "QUALITY",
+          stage: DealStage.CLOSED_WON,
           isQualityPassed: false,
         },
       });
@@ -430,7 +684,7 @@ export async function sendOperationToQualityAction(
             data: qualityAuditors.map((auditor) => ({
               recipientId: auditor.id,
               title: `Parent Deal Rolled Up to Quality (${operation.deal.dealNumber})`,
-              message: `All ${siblingOperations.length} service operations for ${operation.deal.companyName} have passed execution! Deal is ready for comprehensive quality certification.`,
+              message: `All ${siblingOperations.length} service operations for ${operation.deal.companyName} have completed operational execution! Deal is ready for quality certification.`,
               type: NotificationType.ACTION_REQUIRED,
               actionUrl: "/crm/operations?tab=COMPLETED",
             })),
@@ -478,7 +732,8 @@ export async function qualityAuditOperationAction(
         data: {
           qualityScore: parsed.qualityScore,
           qualityFeedback: parsed.qualityFeedback,
-          status: "COMPLETED",
+          status: "Approved",
+          internalStage: "Closed Won",
         },
       });
 
@@ -488,7 +743,7 @@ export async function qualityAuditOperationAction(
       });
 
       const allApproved = siblings.every(
-        (s) => s.id === operationId || s.status === "COMPLETED"
+        (s) => s.id === operationId || s.status === "Approved" || s.stage === OperationStage.QUALITY
       );
 
       if (allApproved) {
@@ -508,7 +763,7 @@ export async function qualityAuditOperationAction(
         data: {
           stage: OperationStage.OPERATION,
           internalStage: "Correction / Revision Required",
-          status: "REJECTED",
+          status: "Hold",
           qualityScore: parsed.qualityScore,
           qualityFeedback: `[Quality Revision Required]: ${parsed.qualityFeedback}`,
         },
@@ -573,10 +828,10 @@ export async function bulkUploadOperationsAction(
           operationNumber,
           dealId: r.dealId,
           serviceName: r.serviceName,
-          teamType: r.teamType || "Team Incorporation",
+          teamType: normalizeTeamType(r.teamType),
           stage: OperationStage.OPERATION,
-          internalStage: r.internalStage || "Initiation",
-          status: "IN_PROGRESS",
+          internalStage: r.internalStage || "Doc Collection",
+          status: "In-process",
           workflowData: r.workflowData || {},
         },
       });
@@ -591,7 +846,7 @@ export async function bulkUploadOperationsAction(
 }
 
 /**
- * Fetches Team Leaders, Team Members, and Quality Auditors for assignment lookups
+ * Fetches Team Leaders, Team Members, Quality Auditors, and Unified All-Employees list for lookups
  */
 export async function getOperationMasterDataAction(): Promise<
   ActionResult<OperationMasterData>
@@ -600,17 +855,15 @@ export async function getOperationMasterDataAction(): Promise<
     const user = await getCurrentUser();
     if (!user) return { success: false, error: "Unauthorized." };
 
-    const [operationStaff, qualityStaff] = await Promise.all([
+    const [allActiveEmployees, qualityStaff] = await Promise.all([
       db.employee.findMany({
-        where: {
-          department: "Operation",
-          status: "ACTIVE",
-        },
+        where: { status: "ACTIVE" },
         select: {
           id: true,
           firstName: true,
           lastName: true,
           department: true,
+          designation: true,
           systemRole: true,
           reportingManagerId: true,
         },
@@ -630,6 +883,41 @@ export async function getOperationMasterDataAction(): Promise<
         orderBy: { firstName: "asc" },
       }),
     ]);
+
+    const allEmployees: EmployeeLookupItem[] = allActiveEmployees.map((e) => ({
+      id: e.id,
+      name: `${e.firstName} ${e.lastName}`.trim(),
+      department: e.department,
+      designation: e.designation,
+    }));
+
+    const caCsList: EmployeeLookupItem[] = allActiveEmployees
+      .filter((e) => {
+        const d = (e.designation || "").toLowerCase();
+        const dept = (e.department || "").toLowerCase();
+        return (
+          d.includes("ca") ||
+          d.includes("cs") ||
+          d.includes("chartered") ||
+          d.includes("company secretary") ||
+          dept.includes("compliance") ||
+          dept.includes("operation") ||
+          dept.includes("legal")
+        );
+      })
+      .map((e) => ({
+        id: e.id,
+        name: `${e.firstName} ${e.lastName}`.trim(),
+        department: e.department,
+        designation: e.designation,
+      }));
+
+    // If caCsList is small, provide allEmployees as fallback
+    const effectiveCaCsList = caCsList.length > 0 ? caCsList : allEmployees;
+
+    const operationStaff = allActiveEmployees.filter(
+      (e) => e.department.toLowerCase().includes("operation")
+    );
 
     const teamLeaders = operationStaff
       .filter((e) => e.systemRole === "TEAM_LEADER" || e.systemRole === "ADMIN_HOD")
@@ -660,6 +948,8 @@ export async function getOperationMasterDataAction(): Promise<
         teamLeaders,
         teamMembers,
         qualityAuditors,
+        allEmployees,
+        caCsList: effectiveCaCsList,
       },
     };
   } catch (error: any) {

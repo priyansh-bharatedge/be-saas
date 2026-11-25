@@ -118,6 +118,22 @@ export async function getDealsAction(params: {
             uploadedBy: { select: { firstName: true, lastName: true } },
           },
         },
+        internalOperations: {
+          select: {
+            id: true,
+            operationNumber: true,
+            serviceName: true,
+            teamType: true,
+            stage: true,
+            internalStage: true,
+            status: true,
+            assignedTl: { select: { firstName: true, lastName: true } },
+            assignedTm: { select: { firstName: true, lastName: true } },
+            caCs1: { select: { firstName: true, lastName: true } },
+            completionDate: true,
+          },
+          orderBy: { createdAt: "asc" },
+        },
       },
     });
 
@@ -230,6 +246,26 @@ export async function getDealsAction(params: {
           ? `${doc.uploadedBy.firstName} ${doc.uploadedBy.lastName}`.trim()
           : null,
         createdAt: doc.createdAt.toISOString(),
+      })),
+
+      internalOperations: ((d as any).internalOperations || []).map((op: any) => ({
+        id: op.id,
+        operationNumber: op.operationNumber,
+        serviceName: op.serviceName,
+        teamType: op.teamType,
+        stage: op.stage,
+        internalStage: op.internalStage,
+        status: op.status,
+        assignedTlName: op.assignedTl
+          ? `${op.assignedTl.firstName} ${op.assignedTl.lastName}`.trim()
+          : null,
+        assignedTmName: op.assignedTm
+          ? `${op.assignedTm.firstName} ${op.assignedTm.lastName}`.trim()
+          : null,
+        caCs1Name: op.caCs1
+          ? `${op.caCs1.firstName} ${op.caCs1.lastName}`.trim()
+          : null,
+        completionDate: op.completionDate ? op.completionDate.toISOString().split("T")[0] : null,
       })),
 
       createdAt: d.createdAt.toISOString(),
@@ -1097,6 +1133,28 @@ export async function sendDealToLegalAction(dealId: string): Promise<ActionResul
     });
 
     if (!deal) return { success: false, error: "Deal not found." };
+
+    // Auto-populate Legal subform fields for each service row from Sales Services
+    for (const s of deal.services) {
+      let inferredTeam = s.teamType;
+      if (!inferredTeam || inferredTeam === "Team Incorporation" || inferredTeam === "ALL") {
+        const sLower = s.serviceName.toLowerCase();
+        if (sLower.includes("fund") || sLower.includes("pitch") || sLower.includes("dpr")) inferredTeam = "Funding";
+        else if (sLower.includes("complian") || sLower.includes("roc") || sLower.includes("itr") || sLower.includes("audit") || sLower.includes("tax")) inferredTeam = "Compliance";
+        else if (sLower.includes("certif") || sLower.includes("iso") || sLower.includes("msme")) inferredTeam = "Certification";
+        else if (sLower.includes("market") || sLower.includes("web") || sLower.includes("seo") || sLower.includes("social")) inferredTeam = "Digital Marketing";
+        else inferredTeam = "Incorporation";
+      }
+
+      await db.dealService.update({
+        where: { id: s.id },
+        data: {
+          teamType: inferredTeam,
+          legalStatus: s.legalStatus || LegalStatus.PENDING,
+          legalDocType: s.legalDocType || "Service Agreement & NDA",
+        },
+      });
+    }
 
     // Advance deal to SENT_TO_LEGAL and CLOSED_WON
     await db.deal.update({

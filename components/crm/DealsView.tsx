@@ -25,6 +25,9 @@ import {
   AlertTriangle,
   GitBranch,
   Eye,
+  Filter,
+  RotateCcw,
+  Calendar,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -39,6 +42,10 @@ import {
   DealFormData,
   DealMasterData,
 } from "@/lib/validations/deal";
+import {
+  TEAM_TYPES,
+  normalizeTeamType,
+} from "@/lib/validations/operation";
 import {
   createDealAction,
   updateDealAction,
@@ -72,9 +79,14 @@ export default function DealsView({
   const openDealId = searchParams.get("openDealId");
 
   const [deals, setDeals] = useState<SerializedDeal[]>(initialDeals);
-  const [activeTab, setActiveTab] = useState<string>("ALL");
+  const [activeTab, setActiveTab] = useState<string>(isLegalUser && !canManageAll ? "LEGAL_ALL" : "ALL");
+  const [legalSubTab, setLegalSubTab] = useState<"ALL" | "IN_PROGRESS" | "COMPLETED">("ALL");
   const [search, setSearch] = useState("");
   const [stageFilter, setStageFilter] = useState<string>("ALL");
+  const [teamTypeFilter, setTeamTypeFilter] = useState<string>("ALL");
+  const [serviceFilter, setServiceFilter] = useState<string>("ALL");
+  const [dateFrom, setDateFrom] = useState<string>("");
+  const [dateTo, setDateTo] = useState<string>("");
 
   // Modal states
   const [isFormOpen, setIsFormOpen] = useState(false);
@@ -125,20 +137,89 @@ export default function DealsView({
   const totalAmountReceived = deals.reduce((acc, d) => acc + (d.amountReceived || 0), 0);
   const totalAmountPending = deals.reduce((acc, d) => acc + (d.amountPending || 0), 0);
 
+  // Derived unique services across deals
+  const uniqueServices = Array.from(
+    new Set(deals.flatMap((d) => d.services?.map((s) => s.serviceName) || []))
+  ).filter(Boolean);
+
+  const isAnyFilterActive =
+    search.trim() !== "" ||
+    stageFilter !== "ALL" ||
+    teamTypeFilter !== "ALL" ||
+    serviceFilter !== "ALL" ||
+    Boolean(dateFrom) ||
+    Boolean(dateTo);
+
+  const resetFilters = () => {
+    setSearch("");
+    setStageFilter("ALL");
+    setTeamTypeFilter("ALL");
+    setServiceFilter("ALL");
+    setDateFrom("");
+    setDateTo("");
+  };
+
   // Filtered List
   const filteredDeals = deals.filter((d) => {
-    // Tab filtering by Accounts status
-    if (activeTab === "DRAFT" && d.accountsStatus !== "DRAFT") return false;
-    if (activeTab === "PENDING_ACCOUNTS" && d.accountsStatus !== "PENDING_ACCOUNTS") return false;
-    if (activeTab === "ACCOUNTS_VERIFIED" && d.accountsStatus !== "ACCOUNTS_VERIFIED") return false;
-    if (activeTab === "SENT_TO_LEGAL" && d.accountsStatus !== "SENT_TO_LEGAL") return false;
-    if (activeTab === "SENT_TO_OPERATION" && d.accountsStatus !== "SENT_TO_OPERATION") return false;
-    if (activeTab === "QUALITY" && d.accountsStatus !== "QUALITY") return false;
+    // 1. Legal 3-Tab Filtering Mode
+    if (activeTab === "LEGAL_ALL") {
+      const isLegal =
+        d.accountsStatus === "SENT_TO_LEGAL" ||
+        d.accountsStatus === "SENT_TO_OPERATION" ||
+        d.accountsStatus === "QUALITY" ||
+        Boolean(d.internalLegalStatus);
+      if (!isLegal) return false;
+    } else if (activeTab === "LEGAL_IN_PROGRESS") {
+      const isInProgress =
+        d.accountsStatus === "SENT_TO_LEGAL" &&
+        d.internalLegalStatus !== LegalStatus.EXECUTED &&
+        d.internalLegalStatus !== LegalStatus.RECEIVED;
+      if (!isInProgress) return false;
+    } else if (activeTab === "LEGAL_COMPLETED") {
+      const isCompleted =
+        d.accountsStatus === "SENT_TO_OPERATION" ||
+        d.accountsStatus === "QUALITY" ||
+        d.internalLegalStatus === LegalStatus.EXECUTED ||
+        d.internalLegalStatus === LegalStatus.RECEIVED;
+      if (!isCompleted) return false;
+    } else {
+      // Standard Accounts Status Tabs
+      if (activeTab === "DRAFT" && d.accountsStatus !== "DRAFT") return false;
+      if (activeTab === "PENDING_ACCOUNTS" && d.accountsStatus !== "PENDING_ACCOUNTS") return false;
+      if (activeTab === "ACCOUNTS_VERIFIED" && d.accountsStatus !== "ACCOUNTS_VERIFIED") return false;
+      if (activeTab === "SENT_TO_LEGAL") {
+        if (d.accountsStatus !== "SENT_TO_LEGAL") return false;
+        if (legalSubTab === "IN_PROGRESS" && (d.internalLegalStatus === LegalStatus.EXECUTED || d.internalLegalStatus === LegalStatus.RECEIVED)) return false;
+        if (legalSubTab === "COMPLETED" && d.internalLegalStatus !== LegalStatus.EXECUTED && d.internalLegalStatus !== LegalStatus.RECEIVED) return false;
+      }
+      if (activeTab === "SENT_TO_OPERATION" && d.accountsStatus !== "SENT_TO_OPERATION") return false;
+      if (activeTab === "QUALITY" && d.accountsStatus !== "QUALITY") return false;
+    }
 
-    // Stage dropdown filter
+    // 2. Stage dropdown filter
     if (stageFilter !== "ALL" && d.stage !== stageFilter) return false;
 
-    // Keyword Search
+    // 3. Team Type Filter (matched against any service under deal)
+    if (teamTypeFilter !== "ALL") {
+      const hasTeam = d.services?.some(
+        (s) => normalizeTeamType(s.teamType) === normalizeTeamType(teamTypeFilter)
+      );
+      if (!hasTeam) return false;
+    }
+
+    // 4. Service Filter
+    if (serviceFilter !== "ALL") {
+      const hasService = d.services?.some(
+        (s) => s.serviceName.toLowerCase() === serviceFilter.toLowerCase()
+      );
+      if (!hasService) return false;
+    }
+
+    // 5. Date Range Filter
+    if (dateFrom && new Date(d.createdAt) < new Date(dateFrom)) return false;
+    if (dateTo && new Date(d.createdAt) > new Date(dateTo + "T23:59:59")) return false;
+
+    // 6. Keyword Search
     if (search.trim()) {
       const q = search.toLowerCase().trim();
       const match =
@@ -147,7 +228,8 @@ export default function DealsView({
         d.clientName.toLowerCase().includes(q) ||
         d.clientPhone.includes(q) ||
         d.companyName.toLowerCase().includes(q) ||
-        (d.panNumber && d.panNumber.toLowerCase().includes(q));
+        (d.panNumber && d.panNumber.toLowerCase().includes(q)) ||
+        d.services?.some((s) => s.serviceName.toLowerCase().includes(q));
       if (!match) return false;
     }
 
@@ -452,140 +534,288 @@ export default function DealsView({
       </div>
 
       {/* 2. DYNAMIC WORKFLOW TABS */}
-      <div className="flex items-center justify-between border-b border-slate-200/80 pb-2">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between border-b border-slate-200/80 pb-2 gap-2">
         <div className="flex items-center gap-1.5 overflow-x-auto scrollbar-none py-1">
-          <button
-            type="button"
-            onClick={() => setActiveTab("ALL")}
-            className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
-              activeTab === "ALL"
-                ? "bg-slate-900 text-white shadow-2xs"
-                : "text-slate-600 hover:bg-slate-100"
-            }`}
-          >
-            All Deals ({deals.length})
-          </button>
+          {/* If user is Legal or explicitly viewing Legal mode */}
+          {isLegalUser && !canManageAll ? (
+            <>
+              <button
+                type="button"
+                onClick={() => setActiveTab("LEGAL_ALL")}
+                className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                  activeTab === "LEGAL_ALL"
+                    ? "bg-slate-900 text-white shadow-2xs"
+                    : "text-slate-600 hover:bg-slate-100"
+                }`}
+              >
+                All Legal Deals ({deals.filter((d) => d.accountsStatus === "SENT_TO_LEGAL" || d.accountsStatus === "SENT_TO_OPERATION" || d.accountsStatus === "QUALITY" || Boolean(d.internalLegalStatus)).length})
+              </button>
 
-          <button
-            type="button"
-            onClick={() => setActiveTab("DRAFT")}
-            className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
-              activeTab === "DRAFT"
-                ? "bg-slate-200 text-slate-900 shadow-2xs"
-                : "text-slate-600 hover:bg-slate-100"
-            }`}
-          >
-            Drafts ({deals.filter((d) => d.accountsStatus === "DRAFT").length})
-          </button>
+              <button
+                type="button"
+                onClick={() => setActiveTab("LEGAL_IN_PROGRESS")}
+                className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                  activeTab === "LEGAL_IN_PROGRESS"
+                    ? "bg-sky-100 text-sky-900 border border-sky-300 shadow-2xs"
+                    : "text-slate-600 hover:bg-slate-100"
+                }`}
+              >
+                In Progress ({deals.filter((d) => d.accountsStatus === "SENT_TO_LEGAL" && d.internalLegalStatus !== LegalStatus.EXECUTED && d.internalLegalStatus !== LegalStatus.RECEIVED).length})
+              </button>
 
-          <button
-            type="button"
-            onClick={() => setActiveTab("PENDING_ACCOUNTS")}
-            className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
-              activeTab === "PENDING_ACCOUNTS"
-                ? "bg-amber-100 text-amber-900 border border-amber-300 shadow-2xs"
-                : "text-slate-600 hover:bg-slate-100"
-            }`}
-          >
-            Pending Accounts ({deals.filter((d) => d.accountsStatus === "PENDING_ACCOUNTS").length})
-          </button>
+              <button
+                type="button"
+                onClick={() => setActiveTab("LEGAL_COMPLETED")}
+                className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                  activeTab === "LEGAL_COMPLETED"
+                    ? "bg-emerald-100 text-emerald-900 border border-emerald-300 shadow-2xs"
+                    : "text-slate-600 hover:bg-slate-100"
+                }`}
+              >
+                Completed & Handed Over ({deals.filter((d) => d.accountsStatus === "SENT_TO_OPERATION" || d.accountsStatus === "QUALITY" || d.internalLegalStatus === LegalStatus.EXECUTED || d.internalLegalStatus === LegalStatus.RECEIVED).length})
+              </button>
+            </>
+          ) : (
+            <>
+              <button
+                type="button"
+                onClick={() => setActiveTab("ALL")}
+                className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                  activeTab === "ALL"
+                    ? "bg-slate-900 text-white shadow-2xs"
+                    : "text-slate-600 hover:bg-slate-100"
+                }`}
+              >
+                All Deals ({deals.length})
+              </button>
 
-          <button
-            type="button"
-            onClick={() => setActiveTab("ACCOUNTS_VERIFIED")}
-            className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
-              activeTab === "ACCOUNTS_VERIFIED"
-                ? "bg-emerald-100 text-emerald-900 border border-emerald-300 shadow-2xs"
-                : "text-slate-600 hover:bg-slate-100"
-            }`}
-          >
-            Accounts Verified ({deals.filter((d) => d.accountsStatus === "ACCOUNTS_VERIFIED").length})
-          </button>
+              <button
+                type="button"
+                onClick={() => setActiveTab("DRAFT")}
+                className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                  activeTab === "DRAFT"
+                    ? "bg-slate-200 text-slate-900 shadow-2xs"
+                    : "text-slate-600 hover:bg-slate-100"
+                }`}
+              >
+                Drafts ({deals.filter((d) => d.accountsStatus === "DRAFT").length})
+              </button>
 
-          <button
-            type="button"
-            onClick={() => setActiveTab("SENT_TO_LEGAL")}
-            className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
-              activeTab === "SENT_TO_LEGAL"
-                ? "bg-sky-100 text-sky-900 border border-sky-300 shadow-2xs"
-                : "text-slate-600 hover:bg-slate-100"
-            }`}
-          >
-            Handed to Legal ({deals.filter((d) => d.accountsStatus === "SENT_TO_LEGAL").length})
-          </button>
+              <button
+                type="button"
+                onClick={() => setActiveTab("PENDING_ACCOUNTS")}
+                className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                  activeTab === "PENDING_ACCOUNTS"
+                    ? "bg-amber-100 text-amber-900 border border-amber-300 shadow-2xs"
+                    : "text-slate-600 hover:bg-slate-100"
+                }`}
+              >
+                Pending Accounts ({deals.filter((d) => d.accountsStatus === "PENDING_ACCOUNTS").length})
+              </button>
 
-          <button
-            type="button"
-            onClick={() => setActiveTab("SENT_TO_OPERATION")}
-            className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
-              activeTab === "SENT_TO_OPERATION"
-                ? "bg-amber-100 text-amber-900 border border-amber-300 shadow-2xs"
-                : "text-slate-600 hover:bg-slate-100"
-            }`}
-          >
-            In Operations ({deals.filter((d) => d.accountsStatus === "SENT_TO_OPERATION").length})
-          </button>
+              <button
+                type="button"
+                onClick={() => setActiveTab("ACCOUNTS_VERIFIED")}
+                className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                  activeTab === "ACCOUNTS_VERIFIED"
+                    ? "bg-emerald-100 text-emerald-900 border border-emerald-300 shadow-2xs"
+                    : "text-slate-600 hover:bg-slate-100"
+                }`}
+              >
+                Accounts Verified ({deals.filter((d) => d.accountsStatus === "ACCOUNTS_VERIFIED").length})
+              </button>
 
-          <button
-            type="button"
-            onClick={() => setActiveTab("QUALITY")}
-            className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
-              activeTab === "QUALITY"
-                ? "bg-purple-100 text-purple-900 border border-purple-300 shadow-2xs"
-                : "text-slate-600 hover:bg-slate-100"
-            }`}
-          >
-            Quality Audit ({deals.filter((d) => d.accountsStatus === "QUALITY").length})
-          </button>
+              <button
+                type="button"
+                onClick={() => setActiveTab("SENT_TO_LEGAL")}
+                className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                  activeTab === "SENT_TO_LEGAL"
+                    ? "bg-sky-100 text-sky-900 border border-sky-300 shadow-2xs"
+                    : "text-slate-600 hover:bg-slate-100"
+                }`}
+              >
+                Handed to Legal ({deals.filter((d) => d.accountsStatus === "SENT_TO_LEGAL").length})
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setActiveTab("SENT_TO_OPERATION")}
+                className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                  activeTab === "SENT_TO_OPERATION"
+                    ? "bg-amber-100 text-amber-900 border border-amber-300 shadow-2xs"
+                    : "text-slate-600 hover:bg-slate-100"
+                }`}
+              >
+                In Operations ({deals.filter((d) => d.accountsStatus === "SENT_TO_OPERATION").length})
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setActiveTab("QUALITY")}
+                className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                  activeTab === "QUALITY"
+                    ? "bg-purple-100 text-purple-900 border border-purple-300 shadow-2xs"
+                    : "text-slate-600 hover:bg-slate-100"
+                }`}
+              >
+                Quality Audit ({deals.filter((d) => d.accountsStatus === "QUALITY").length})
+              </button>
+            </>
+          )}
         </div>
 
         {isAccountsUser && (
-          <span className="hidden sm:inline-flex items-center gap-1.5 text-[11px] font-semibold text-emerald-700 bg-emerald-50 border border-emerald-200 px-2.5 py-1 rounded-full">
+          <span className="hidden sm:inline-flex items-center gap-1.5 text-[11px] font-semibold text-emerald-700 bg-emerald-50 border border-emerald-200 px-2.5 py-1 rounded-full shrink-0">
             <ShieldCheck className="h-3.5 w-3.5" />
             Accounts Verification & Legal Handover Enabled
           </span>
         )}
       </div>
 
-      {/* 3. FILTER & ACTION TOOLBAR */}
-      <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 p-4 rounded-2xl bg-white/70 backdrop-blur-md border border-slate-200/80 shadow-xs">
-        <div className="flex flex-1 items-center gap-3">
-          <div className="relative flex-1 max-w-md">
+      {/* Legal Sub-Tabs when on SENT_TO_LEGAL */}
+      {activeTab === "SENT_TO_LEGAL" && (
+        <div className="flex items-center gap-2 p-2 rounded-xl bg-sky-50/60 border border-sky-200/60 text-xs">
+          <span className="font-semibold text-sky-900 text-[11px]">Legal Department Filter:</span>
+          <button
+            type="button"
+            onClick={() => setLegalSubTab("ALL")}
+            className={`px-2.5 py-1 rounded-lg font-semibold transition-all ${
+              legalSubTab === "ALL" ? "bg-sky-600 text-white" : "text-sky-700 hover:bg-sky-100"
+            }`}
+          >
+            All Legal ({deals.filter((d) => d.accountsStatus === "SENT_TO_LEGAL").length})
+          </button>
+          <button
+            type="button"
+            onClick={() => setLegalSubTab("IN_PROGRESS")}
+            className={`px-2.5 py-1 rounded-lg font-semibold transition-all ${
+              legalSubTab === "IN_PROGRESS" ? "bg-sky-600 text-white" : "text-sky-700 hover:bg-sky-100"
+            }`}
+          >
+            In Progress ({deals.filter((d) => d.accountsStatus === "SENT_TO_LEGAL" && d.internalLegalStatus !== LegalStatus.EXECUTED && d.internalLegalStatus !== LegalStatus.RECEIVED).length})
+          </button>
+          <button
+            type="button"
+            onClick={() => setLegalSubTab("COMPLETED")}
+            className={`px-2.5 py-1 rounded-lg font-semibold transition-all ${
+              legalSubTab === "COMPLETED" ? "bg-sky-600 text-white" : "text-sky-700 hover:bg-sky-100"
+            }`}
+          >
+            Completed ({deals.filter((d) => d.accountsStatus === "SENT_TO_LEGAL" && (d.internalLegalStatus === LegalStatus.EXECUTED || d.internalLegalStatus === LegalStatus.RECEIVED)).length})
+          </button>
+        </div>
+      )}
+
+      {/* 3. DYNAMIC FILTER & ACTION TOOLBAR */}
+      <div className="p-4 rounded-2xl bg-white/70 backdrop-blur-md border border-slate-200/80 shadow-xs space-y-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+          <div className="relative">
             <Search className="absolute left-3 top-2.5 h-4 w-4 text-slate-400" />
             <Input
-              placeholder="Search by deal #, title, client, PAN, or company..."
+              placeholder="Search deal #, title, client, PAN, company, service..."
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              className="pl-9 text-xs bg-white/80 border-slate-200/80 shadow-2xs h-9"
+              className="pl-9 text-xs bg-white/90 border-slate-200/80 h-9"
             />
           </div>
 
-          <select
-            value={stageFilter}
-            onChange={(e) => setStageFilter(e.target.value)}
-            className="h-9 rounded-md border border-slate-200 bg-white/90 px-3 text-xs text-slate-700 shadow-2xs focus:outline-none focus:ring-2 focus:ring-[#F0944D]/20"
-          >
-            <option value="ALL">All Stages</option>
-            <option value={DealStage.LEAD}>Lead</option>
-            <option value={DealStage.QUALIFIED}>Qualified</option>
-            <option value={DealStage.PROPOSAL}>Proposal</option>
-            <option value={DealStage.NEGOTIATION}>Negotiation</option>
-            <option value={DealStage.CLOSED_WON}>Closed Won</option>
-            <option value={DealStage.CLOSED_LOST}>Closed Lost</option>
-          </select>
+          <div>
+            <select
+              value={stageFilter}
+              onChange={(e) => setStageFilter(e.target.value)}
+              className="w-full h-9 rounded-md border border-slate-200 bg-white/90 px-3 text-xs text-slate-700 shadow-2xs focus:outline-hidden focus:ring-2 focus:ring-[#F0944D]/20"
+            >
+              <option value="ALL">All Stages</option>
+              <option value={DealStage.LEAD}>Lead</option>
+              <option value={DealStage.QUALIFIED}>Qualified</option>
+              <option value={DealStage.PROPOSAL}>Proposal</option>
+              <option value={DealStage.NEGOTIATION}>Negotiation</option>
+              <option value={DealStage.CLOSED_WON}>Closed Won</option>
+              <option value={DealStage.CLOSED_LOST}>Closed Lost</option>
+            </select>
+          </div>
+
+          <div className="flex items-center gap-1.5">
+            <Filter className="h-3.5 w-3.5 text-slate-400 shrink-0" />
+            <select
+              value={teamTypeFilter}
+              onChange={(e) => setTeamTypeFilter(e.target.value)}
+              className="w-full h-9 rounded-md border border-slate-200 bg-white/90 px-2.5 text-xs text-slate-700 shadow-2xs focus:outline-hidden focus:ring-2 focus:ring-[#F0944D]/20"
+            >
+              <option value="ALL">All Team Types</option>
+              {TEAM_TYPES.map((t) => (
+                <option key={t} value={t}>
+                  {t}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div>
+            <select
+              value={serviceFilter}
+              onChange={(e) => setServiceFilter(e.target.value)}
+              className="w-full h-9 rounded-md border border-slate-200 bg-white/90 px-2.5 text-xs text-slate-700 shadow-2xs focus:outline-hidden focus:ring-2 focus:ring-[#F0944D]/20"
+            >
+              <option value="ALL">All Services</option>
+              {uniqueServices.map((s) => (
+                <option key={s} value={s}>
+                  {s}
+                </option>
+              ))}
+            </select>
+          </div>
         </div>
 
-        <div className="flex items-center gap-2">
-          <Button
-            onClick={() => {
-              setSelectedDeal(null);
-              setIsFormOpen(true);
-            }}
-            className="h-9 text-xs font-semibold bg-gradient-to-r from-[#ACCAD5] to-[#F0944D] text-slate-900 shadow-xs hover:opacity-95"
-          >
-            <Plus className="h-3.5 w-3.5 mr-1.5" />
-            New Deal
-          </Button>
+        {/* Row 2: Date From, Date To, Reset & Create Button */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 pt-2 border-t border-slate-100 items-center">
+          <div className="flex items-center gap-1.5">
+            <span className="text-[10px] font-semibold text-slate-400 shrink-0">From:</span>
+            <input
+              type="date"
+              value={dateFrom}
+              onChange={(e) => setDateFrom(e.target.value)}
+              className="w-full h-8 rounded-lg border border-slate-200 bg-white px-2 text-xs text-slate-700"
+            />
+          </div>
+
+          <div className="flex items-center gap-1.5">
+            <span className="text-[10px] font-semibold text-slate-400 shrink-0">To:</span>
+            <input
+              type="date"
+              value={dateTo}
+              onChange={(e) => setDateTo(e.target.value)}
+              className="w-full h-8 rounded-lg border border-slate-200 bg-white px-2 text-xs text-slate-700"
+            />
+          </div>
+
+          <div>
+            {isAnyFilterActive && (
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                onClick={resetFilters}
+                className="h-8 text-xs font-semibold text-[#F0944D] hover:bg-orange-50 gap-1 w-full justify-center"
+              >
+                <RotateCcw className="h-3 w-3" />
+                Reset Filters
+              </Button>
+            )}
+          </div>
+
+          <div className="flex items-center justify-end">
+            <Button
+              onClick={() => {
+                setSelectedDeal(null);
+                setIsFormOpen(true);
+              }}
+              className="h-8 text-xs font-semibold bg-gradient-to-r from-[#ACCAD5] to-[#F0944D] text-slate-900 shadow-xs hover:opacity-95 w-full sm:w-auto"
+            >
+              <Plus className="h-3.5 w-3.5 mr-1.5" />
+              New Deal
+            </Button>
+          </div>
         </div>
       </div>
 
@@ -638,6 +868,18 @@ export default function DealsView({
                           <span className="text-[10px] text-slate-400 mt-0.5">
                             {d.bookingDate}
                           </span>
+                          {d.internalOperations && d.internalOperations.length > 0 && (
+                            <div className="flex items-center gap-1 mt-1">
+                              <Badge
+                                variant="outline"
+                                className="bg-purple-50 text-purple-700 border-purple-200 text-[10px] font-semibold gap-1"
+                                title={`${d.internalOperations.length} operational child record(s) spawned`}
+                              >
+                                <GitBranch className="h-2.5 w-2.5" />
+                                {d.internalOperations.length} Op File{d.internalOperations.length > 1 ? "s" : ""}
+                              </Badge>
+                            </div>
+                          )}
                         </div>
                       </td>
 
@@ -712,8 +954,17 @@ export default function DealsView({
                         </Badge>
                       </td>
 
-                      {/* Accounts Status */}
-                      <td className="px-4 py-3.5">{getAccountsBadge(d.accountsStatus)}</td>
+                      {/* Accounts & Legal Status */}
+                      <td className="px-4 py-3.5">
+                        {getAccountsBadge(d.accountsStatus)}
+                        {d.internalLegalStatus && (
+                          <div className="mt-1">
+                            <Badge variant="outline" className="text-[10px] bg-sky-50 text-sky-800 border-sky-300">
+                              Legal: {d.internalLegalStatus}
+                            </Badge>
+                          </div>
+                        )}
+                      </td>
 
                       {/* Actions */}
                       <td className="px-4 py-3.5 text-right">

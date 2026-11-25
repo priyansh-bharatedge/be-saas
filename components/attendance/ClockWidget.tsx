@@ -181,15 +181,14 @@ export default function ClockWidget({
     >
       {/* Background ambient subtle brand tint (sky slate #ACCAD5 & sunset amber #F0944D) */}
       <div
-        className={`absolute -right-24 -top-24 h-64 w-64 rounded-full blur-3xl pointer-events-none transition-colors duration-700 ${
-          currentStatus === "ACTIVE"
+        className={`absolute -right-24 -top-24 h-64 w-64 rounded-full blur-3xl pointer-events-none transition-colors duration-700 ${currentStatus === "ACTIVE"
             ? "bg-[#ACCAD5]/25"
             : currentStatus === "MEETING_MODE"
-            ? "bg-emerald-500/20"
-            : currentStatus === "IDLE"
-            ? "bg-[#F0944D]/20"
-            : "bg-[#ACCAD5]/15"
-        }`}
+              ? "bg-emerald-500/20"
+              : currentStatus === "IDLE"
+                ? "bg-[#F0944D]/20"
+                : "bg-[#ACCAD5]/15"
+          }`}
       />
 
       {/* Header section with employee info and live status badge */}
@@ -203,9 +202,7 @@ export default function ClockWidget({
               <h3 className="text-sm font-semibold text-slate-900">
                 Time & Attendance Tracker
               </h3>
-              <span className="text-[10px] uppercase font-mono px-2.5 py-0.5 rounded-full bg-[#EBF3F6] text-[#588594] border border-[#ACCAD5]/40 font-medium">
-                5m Idle Auto-Detect
-              </span>
+
             </div>
             <p className="text-xs text-slate-500 mt-0.5">
               {data?.employeeName || "Staff Member"} • {data?.department || "HRMS"}
@@ -480,8 +477,8 @@ export default function ClockWidget({
                 const duration = sess.durationMinutes
                   ? `${sess.durationMinutes.toFixed(1)} mins`
                   : isOngoing
-                  ? "Ongoing"
-                  : "--";
+                    ? "Ongoing"
+                    : "--";
 
                 return (
                   <div
@@ -490,20 +487,19 @@ export default function ClockWidget({
                   >
                     <div className="flex items-center gap-2">
                       <span
-                        className={`h-2 w-2 rounded-full ${
-                          sess.status === "ACTIVE"
+                        className={`h-2 w-2 rounded-full ${sess.status === "ACTIVE"
                             ? "bg-[#588594]"
                             : sess.status === "MEETING_MODE"
-                            ? "bg-emerald-500"
-                            : "bg-[#F0944D]"
-                        }`}
+                              ? "bg-emerald-500"
+                              : "bg-[#F0944D]"
+                          }`}
                       />
                       <span className="font-semibold text-slate-800">
                         {sess.status === "ACTIVE"
                           ? "Active Working"
                           : sess.status === "MEETING_MODE"
-                          ? "Client Meeting"
-                          : "Idle Break"}
+                            ? "Client Meeting"
+                            : "Idle Break"}
                       </span>
                       <span className="text-slate-400 text-[11px]">
                         {formatTimeStr(sess.startTime)} -{" "}

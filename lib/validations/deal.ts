@@ -17,7 +17,7 @@ export const dealServiceItemSchema = z.object({
   remarks: z.string().trim().optional().or(z.literal("")),
 
   // Legal fields per service row
-  teamType: z.string().default("Team Incorporation"),
+  teamType: z.string().default("Incorporation"),
   legalStatus: z.nativeEnum(LegalStatus).default(LegalStatus.PENDING),
   legalDocType: z.string().optional().or(z.literal("")),
   agreementTerms: z.string().optional().or(z.literal("")),
@@ -149,6 +149,20 @@ export interface SerializedDealDocument {
   createdAt: string;
 }
 
+export interface SerializedLinkedOperation {
+  id: string;
+  operationNumber: string;
+  serviceName: string;
+  teamType: string;
+  stage: string;
+  internalStage: string;
+  status: string;
+  assignedTlName?: string | null;
+  assignedTmName?: string | null;
+  caCs1Name?: string | null;
+  completionDate?: string | null;
+}
+
 export interface SerializedDeal {
   id: string;
   dealNumber: string;
@@ -204,6 +218,7 @@ export interface SerializedDeal {
 
   services: SerializedDealService[];
   documents: SerializedDealDocument[];
+  internalOperations?: SerializedLinkedOperation[];
 
   createdAt: string;
   updatedAt: string;

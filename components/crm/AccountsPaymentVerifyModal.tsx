@@ -17,6 +17,7 @@ import {
   CheckCircle2,
   XCircle,
   ExternalLink,
+  Eye,
   Landmark,
   IndianRupee,
   Calendar,
@@ -26,6 +27,7 @@ import {
 } from "lucide-react";
 import { SerializedPaymentRecord } from "@/lib/validations/payment";
 import { SalaryEntity } from "@prisma/client";
+import { openDocumentPreview } from "@/components/modals/DocumentPreviewModal";
 
 interface AccountsPaymentVerifyModalProps {
   open: boolean;
@@ -146,15 +148,20 @@ export default function AccountsPaymentVerifyModal({
                 Payment Proof / Screenshot
               </span>
               {payment.screenshotUrl && (
-                <a
-                  href={payment.screenshotUrl}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="text-[11px] text-[#F0944D] hover:underline flex items-center gap-1"
+                <button
+                  type="button"
+                  onClick={() =>
+                    openDocumentPreview(
+                      payment.screenshotUrl!,
+                      `Payment Proof — ₹${payment.amount.toLocaleString("en-IN")}`,
+                      "image"
+                    )
+                  }
+                  className="text-[11px] text-[#F0944D] hover:underline flex items-center gap-1 cursor-pointer"
                 >
-                  <ExternalLink className="h-3 w-3" />
-                  Open High-Res
-                </a>
+                  <Eye className="h-3 w-3" />
+                  Preview Full Size
+                </button>
               )}
             </div>
 
@@ -164,7 +171,13 @@ export default function AccountsPaymentVerifyModal({
                   src={payment.screenshotUrl}
                   alt="Receipt Screenshot"
                   className="max-h-52 w-auto object-contain cursor-pointer hover:opacity-95"
-                  onClick={() => window.open(payment.screenshotUrl!, "_blank")}
+                  onClick={() =>
+                    openDocumentPreview(
+                      payment.screenshotUrl!,
+                      `Payment Proof — ₹${payment.amount.toLocaleString("en-IN")}`,
+                      "image"
+                    )
+                  }
                 />
               </div>
             ) : (

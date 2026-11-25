@@ -442,6 +442,26 @@ export async function getScopeFilter(
         };
       }
 
+      // Legal Department: Full Support Desk ticket visibility for cross-departmental coordination & compliance
+      if (deptLower.includes("legal")) {
+        return {
+          currentUserId: user.id,
+          role,
+          systemRole,
+          department: dept,
+          isSuperAdmin: false,
+          isHrAdmin: false,
+          isHod,
+          isTl,
+          isTm,
+          canViewAll: true,
+          canManageAll: isHod,
+          allowedEmployeeIds: null,
+          departmentEmployeeIds,
+          subordinateIds,
+        };
+      }
+
       // Department HOD: Tickets raised by their department staff
       if (isHod) {
         const deptScope = Array.from(new Set([user.id, ...departmentEmployeeIds]));

@@ -157,6 +157,9 @@ export default function SupportTicketsView({ initialTickets, total, userScope }:
           source: "PORTAL",
         });
         fetchTickets();
+        if (typeof window !== "undefined") {
+          window.dispatchEvent(new Event("notification-updated"));
+        }
       } else {
         toast.error(res.error || "Failed to create ticket.");
       }
@@ -291,123 +294,14 @@ export default function SupportTicketsView({ initialTickets, total, userScope }:
             <RefreshCw className={`w-3.5 h-3.5 ${isLoading ? "animate-spin" : ""}`} />
           </Button>
 
-          <Dialog open={createOpen} onOpenChange={setCreateOpen}>
-            <DialogTrigger asChild>
-              <Button size="sm" className="h-8 text-xs bg-[#F0944D] hover:bg-[#F0944D]/90 text-white">
-                <Plus className="w-3.5 h-3.5 mr-1" />
-                New Ticket
-              </Button>
-            </DialogTrigger>
-            <DialogContent className="max-w-md bg-white/95 dark:bg-slate-900/95 backdrop-blur-md border border-slate-200 dark:border-slate-800">
-              <DialogHeader>
-                <DialogTitle className="text-base font-bold text-slate-900 dark:text-slate-100 flex items-center gap-2">
-                  <Headphones className="w-4 h-4 text-[#F0944D]" />
-                  Create Support Ticket
-                </DialogTitle>
-              </DialogHeader>
-
-              <form onSubmit={handleCreateTicket} className="space-y-3.5 mt-2">
-                <div>
-                  <Label className="text-xs">Customer Name *</Label>
-                  <Input
-                    placeholder="e.g. Ramesh Patel"
-                    value={formData.customerName}
-                    onChange={(e) => setFormData({ ...formData, customerName: e.target.value })}
-                    className="h-8 text-xs mt-1"
-                    required
-                  />
-                </div>
-
-                <div className="grid grid-cols-2 gap-2">
-                  <div>
-                    <Label className="text-xs">Customer Email *</Label>
-                    <Input
-                      type="email"
-                      placeholder="client@example.com"
-                      value={formData.customerEmail}
-                      onChange={(e) => setFormData({ ...formData, customerEmail: e.target.value })}
-                      className="h-8 text-xs mt-1"
-                      required
-                    />
-                  </div>
-                  <div>
-                    <Label className="text-xs">Phone (Optional)</Label>
-                    <Input
-                      placeholder="+91 9876543210"
-                      value={formData.customerPhone}
-                      onChange={(e) => setFormData({ ...formData, customerPhone: e.target.value })}
-                      className="h-8 text-xs mt-1"
-                    />
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-2 gap-2">
-                  <div>
-                    <Label className="text-xs">Priority</Label>
-                    <select
-                      value={formData.priority}
-                      onChange={(e) => setFormData({ ...formData, priority: e.target.value as TicketPriority })}
-                      className="w-full h-8 text-xs mt-1 px-2.5 rounded-md border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800"
-                    >
-                      {Object.values(TicketPriority).map((p) => (
-                        <option key={p} value={p}>{p}</option>
-                      ))}
-                    </select>
-                  </div>
-                  <div>
-                    <Label className="text-xs">Inbound Source</Label>
-                    <Input
-                      value={formData.source}
-                      onChange={(e) => setFormData({ ...formData, source: e.target.value })}
-                      className="h-8 text-xs mt-1"
-                    />
-                  </div>
-                </div>
-
-                <div>
-                  <Label className="text-xs">Subject *</Label>
-                  <Input
-                    placeholder="Brief description of inquiry..."
-                    value={formData.subject}
-                    onChange={(e) => setFormData({ ...formData, subject: e.target.value })}
-                    className="h-8 text-xs mt-1"
-                    required
-                  />
-                </div>
-
-                <div>
-                  <Label className="text-xs">Detailed Description *</Label>
-                  <Textarea
-                    placeholder="Provide full details of the customer issue..."
-                    value={formData.description}
-                    onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-                    className="text-xs min-h-[80px] mt-1"
-                    required
-                  />
-                </div>
-
-                <DialogFooter className="pt-2">
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    onClick={() => setCreateOpen(false)}
-                    disabled={isSubmitting}
-                  >
-                    Cancel
-                  </Button>
-                  <Button
-                    type="submit"
-                    size="sm"
-                    disabled={isSubmitting}
-                    className="bg-[#F0944D] hover:bg-[#F0944D]/90 text-white"
-                  >
-                    {isSubmitting ? "Creating..." : "Submit Ticket"}
-                  </Button>
-                </DialogFooter>
-              </form>
-            </DialogContent>
-          </Dialog>
+          <Button
+            size="sm"
+            onClick={() => setCreateOpen(true)}
+            className="h-8 text-xs bg-[#F0944D] hover:bg-[#F0944D]/90 text-white"
+          >
+            <Plus className="w-3.5 h-3.5 mr-1" />
+            New Ticket
+          </Button>
         </div>
       </div>
 
@@ -500,6 +394,118 @@ export default function SupportTicketsView({ initialTickets, total, userScope }:
           ))}
         </div>
       )}
+      {/* Create Ticket Modal */}
+      <Dialog open={createOpen} onOpenChange={setCreateOpen}>
+        <DialogContent className="max-w-md bg-white/95 dark:bg-slate-900/95 backdrop-blur-md border border-slate-200 dark:border-slate-800">
+          <DialogHeader>
+            <DialogTitle className="text-base font-bold text-slate-900 dark:text-slate-100 flex items-center gap-2">
+              <Headphones className="w-4 h-4 text-[#F0944D]" />
+              Create Support Ticket
+            </DialogTitle>
+          </DialogHeader>
+
+          <form onSubmit={handleCreateTicket} className="space-y-3.5 mt-2">
+            <div>
+              <Label className="text-xs">Customer Name *</Label>
+              <Input
+                placeholder="e.g. Ramesh Patel"
+                value={formData.customerName}
+                onChange={(e) => setFormData({ ...formData, customerName: e.target.value })}
+                className="h-8 text-xs mt-1"
+                required
+              />
+            </div>
+
+            <div className="grid grid-cols-2 gap-2">
+              <div>
+                <Label className="text-xs">Customer Email *</Label>
+                <Input
+                  type="email"
+                  placeholder="client@example.com"
+                  value={formData.customerEmail}
+                  onChange={(e) => setFormData({ ...formData, customerEmail: e.target.value })}
+                  className="h-8 text-xs mt-1"
+                  required
+                />
+              </div>
+              <div>
+                <Label className="text-xs">Phone (Optional)</Label>
+                <Input
+                  placeholder="+91 9876543210"
+                  value={formData.customerPhone}
+                  onChange={(e) => setFormData({ ...formData, customerPhone: e.target.value })}
+                  className="h-8 text-xs mt-1"
+                />
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-2">
+              <div>
+                <Label className="text-xs">Priority</Label>
+                <select
+                  value={formData.priority}
+                  onChange={(e) => setFormData({ ...formData, priority: e.target.value as TicketPriority })}
+                  className="w-full h-8 text-xs mt-1 px-2.5 rounded-md border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800"
+                >
+                  {Object.values(TicketPriority).map((p) => (
+                    <option key={p} value={p}>{p}</option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <Label className="text-xs">Inbound Source</Label>
+                <Input
+                  value={formData.source}
+                  onChange={(e) => setFormData({ ...formData, source: e.target.value })}
+                  className="h-8 text-xs mt-1"
+                />
+              </div>
+            </div>
+
+            <div>
+              <Label className="text-xs">Subject *</Label>
+              <Input
+                placeholder="Brief description of inquiry..."
+                value={formData.subject}
+                onChange={(e) => setFormData({ ...formData, subject: e.target.value })}
+                className="h-8 text-xs mt-1"
+                required
+              />
+            </div>
+
+            <div>
+              <Label className="text-xs">Detailed Description *</Label>
+              <Textarea
+                placeholder="Provide full details of the customer issue..."
+                value={formData.description}
+                onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+                className="text-xs min-h-[80px] mt-1"
+                required
+              />
+            </div>
+
+            <DialogFooter className="pt-2">
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => setCreateOpen(false)}
+                disabled={isSubmitting}
+              >
+                Cancel
+              </Button>
+              <Button
+                type="submit"
+                size="sm"
+                disabled={isSubmitting}
+                className="bg-[#F0944D] hover:bg-[#F0944D]/90 text-white"
+              >
+                {isSubmitting ? "Creating..." : "Submit Ticket"}
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

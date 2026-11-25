@@ -52,6 +52,13 @@ export const ENTERPRISE_SEED_USERS: EnterpriseUserSeed[] = [
     role: Role.CRM,
     jobTitle: "Head of Accounts & Finance",
   },
+  {
+    id: "usr-legal-07",
+    email: "legal@bharatedge.com",
+    name: "Adv. Aditya Verma",
+    role: Role.CRM,
+    jobTitle: "Head of Legal & Compliance",
+  },
 ];
 
 export async function findUserByEmail(email: string) {

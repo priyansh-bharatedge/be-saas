@@ -17,6 +17,7 @@ import {
   CheckCircle2,
   Clock,
   ExternalLink,
+  Eye,
   IndianRupee,
   ShieldCheck,
   User,
@@ -26,6 +27,7 @@ import {
   Briefcase,
 } from "lucide-react";
 import { SerializedPaymentRecord } from "@/lib/validations/payment";
+import { openDocumentPreview } from "@/components/modals/DocumentPreviewModal";
 
 interface PaymentDetailModalProps {
   payment: SerializedPaymentRecord | null;
@@ -203,22 +205,37 @@ export default function PaymentDetailModal({
             </span>
             {payment.screenshotUrl ? (
               <div className="space-y-3">
-                <div className="max-h-60 overflow-hidden rounded-lg border border-slate-200 bg-slate-50 flex items-center justify-center p-2">
+                <div
+                  onClick={() =>
+                    openDocumentPreview(
+                      payment.screenshotUrl!,
+                      `Payment Slip Proof — ₹${payment.amount.toLocaleString("en-IN")}`,
+                      "image"
+                    )
+                  }
+                  className="max-h-60 overflow-hidden rounded-lg border border-slate-200 bg-slate-50 flex items-center justify-center p-2 cursor-pointer hover:opacity-95"
+                  title="Click to preview"
+                >
                   <img
                     src={payment.screenshotUrl}
                     alt="Payment Slip Proof"
                     className="max-h-56 max-w-full object-contain rounded"
                   />
                 </div>
-                <a
-                  href={payment.screenshotUrl}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="inline-flex items-center gap-1.5 text-xs font-semibold text-sky-600 hover:underline"
+                <button
+                  type="button"
+                  onClick={() =>
+                    openDocumentPreview(
+                      payment.screenshotUrl!,
+                      `Payment Slip Proof — ₹${payment.amount.toLocaleString("en-IN")}`,
+                      "image"
+                    )
+                  }
+                  className="inline-flex items-center gap-1.5 text-xs font-semibold text-sky-600 hover:text-sky-700 hover:underline cursor-pointer"
                 >
-                  <ExternalLink className="h-3.5 w-3.5" />
-                  Open full resolution image in new tab
-                </a>
+                  <Eye className="h-3.5 w-3.5" />
+                  View Full Resolution Screenshot
+                </button>
               </div>
             ) : (
               <p className="text-slate-400 italic text-xs">No screenshot uploaded for this payment.</p>

@@ -29,6 +29,7 @@ import {
   Send,
   Loader2,
   ExternalLink,
+  Eye,
   CheckCircle2,
   AlertCircle,
   Users,
@@ -44,6 +45,7 @@ import {
 } from "@/lib/validations/deal";
 import { DealStage, LegalStatus } from "@prisma/client";
 import { toast } from "sonner";
+import { openDocumentPreview } from "@/components/modals/DocumentPreviewModal";
 
 interface DealFormModalProps {
   open: boolean;
@@ -243,46 +245,46 @@ export default function DealFormModal({
 
         services: deal.services.length
           ? deal.services.map((s) => ({
-              id: s.id,
-              serviceId: s.serviceId || "",
-              serviceName: s.serviceName,
-              minimumPrice: s.minimumPrice,
-              outsourceCost: s.outsourceCost,
-              totalAmount: s.totalPrice,
-              withoutGstAmount: s.withoutGstAmount,
-              gstAmount: s.gstAmount,
-              amountReceived: s.amountReceived,
-              receivedWithoutGst: s.receivedWithoutGst,
-              receivedGst: s.receivedGst,
-              amountPending: s.amountPending,
-              remarks: s.remarks || "",
-              teamType: s.teamType || "Team Incorporation",
-              legalStatus: s.legalStatus || LegalStatus.PENDING,
-              legalDocType: s.legalDocType || "Service Agreement",
-              agreementTerms: s.agreementTerms || "",
-              legalRemarks: s.legalRemarks || "",
-            }))
+            id: s.id,
+            serviceId: s.serviceId || "",
+            serviceName: s.serviceName,
+            minimumPrice: s.minimumPrice,
+            outsourceCost: s.outsourceCost,
+            totalAmount: s.totalPrice,
+            withoutGstAmount: s.withoutGstAmount,
+            gstAmount: s.gstAmount,
+            amountReceived: s.amountReceived,
+            receivedWithoutGst: s.receivedWithoutGst,
+            receivedGst: s.receivedGst,
+            amountPending: s.amountPending,
+            remarks: s.remarks || "",
+            teamType: s.teamType || "Team Incorporation",
+            legalStatus: s.legalStatus || LegalStatus.PENDING,
+            legalDocType: s.legalDocType || "Service Agreement",
+            agreementTerms: s.agreementTerms || "",
+            legalRemarks: s.legalRemarks || "",
+          }))
           : [
-              {
-                serviceId: "",
-                serviceName: "Professional Advisory Service",
-                minimumPrice: 10000,
-                outsourceCost: 0,
-                totalAmount: 11800,
-                withoutGstAmount: 10000,
-                gstAmount: 1800,
-                amountReceived: 11800,
-                receivedWithoutGst: 10000,
-                receivedGst: 1800,
-                amountPending: 0,
-                remarks: "",
-                teamType: "Team Incorporation",
-                legalStatus: LegalStatus.PENDING,
-                legalDocType: "Service Agreement",
-                agreementTerms: "",
-                legalRemarks: "",
-              },
-            ],
+            {
+              serviceId: "",
+              serviceName: "Professional Advisory Service",
+              minimumPrice: 10000,
+              outsourceCost: 0,
+              totalAmount: 11800,
+              withoutGstAmount: 10000,
+              gstAmount: 1800,
+              amountReceived: 11800,
+              receivedWithoutGst: 10000,
+              receivedGst: 1800,
+              amountPending: 0,
+              remarks: "",
+              teamType: "Team Incorporation",
+              legalStatus: LegalStatus.PENDING,
+              legalDocType: "Service Agreement",
+              agreementTerms: "",
+              legalRemarks: "",
+            },
+          ],
 
         subTotal: deal.subTotal,
         gstRate: 18,
@@ -1089,67 +1091,79 @@ export default function DealFormModal({
 
                   {/* Legal Configuration Per Service Row (Hidden for Sales, Read-Only for non-Legal, Editable for Legal & Super Admin) */}
                   {canViewLegal && (
-                    <div className="md:col-span-12 p-2.5 rounded-lg bg-slate-50 border border-slate-200/60 grid grid-cols-1 sm:grid-cols-4 gap-2 text-xs">
+                    <div className="md:col-span-12 p-3 rounded-xl bg-slate-50 border border-slate-200/80 grid grid-cols-1 sm:grid-cols-2 md:grid-cols-5 gap-2.5 text-xs shadow-2xs">
                       <div>
-                        <Label className="text-[10px] font-semibold text-slate-600">Assigned Team Type</Label>
+                        <Label className="text-[10px] font-semibold text-slate-700">Internal Team Type</Label>
                         <select
                           {...register(`services.${index}.teamType` as const)}
                           disabled={!canEditLegal}
-                          className={`w-full mt-0.5 h-7 rounded border border-slate-200 px-2 text-[11px] ${
-                            !canEditLegal ? "bg-slate-100 text-slate-500 cursor-not-allowed" : "bg-white"
-                          }`}
+                          className={`w-full mt-1 h-8 rounded-lg border border-slate-200 px-2 text-[11px] font-medium ${!canEditLegal ? "bg-slate-100 text-slate-500 cursor-not-allowed" : "bg-white"
+                            }`}
                         >
-                          <option value="Team Incorporation">Team Incorporation</option>
-                          <option value="Team Funding">Team Funding</option>
-                          <option value="Team Compliance">Team Compliance</option>
-                          <option value="Team Digital Marketing">Team Digital Marketing</option>
+                          <option value="Incorporation">Incorporation</option>
+                          <option value="Compliance">Compliance</option>
+                          <option value="Funding">Funding</option>
+                          <option value="Certification">Certification</option>
+                          <option value="Digital Marketing">Digital Marketing</option>
                         </select>
                       </div>
 
                       <div>
-                        <Label className="text-[10px] font-semibold text-slate-600">Legal Status</Label>
+                        <Label className="text-[10px] font-semibold text-slate-700">Internal Legal Status</Label>
                         <select
                           {...register(`services.${index}.legalStatus` as const)}
                           disabled={!canEditLegal}
-                          className={`w-full mt-0.5 h-7 rounded border border-slate-200 px-2 text-[11px] ${
-                            !canEditLegal ? "bg-slate-100 text-slate-500 cursor-not-allowed" : "bg-white"
-                          }`}
+                          className={`w-full mt-1 h-8 rounded-lg border border-slate-200 px-2 text-[11px] font-medium ${!canEditLegal ? "bg-slate-100 text-slate-500 cursor-not-allowed" : "bg-white"
+                            }`}
                         >
                           <option value={LegalStatus.PENDING}>Pending</option>
+                          <option value={LegalStatus.IN_PROGRESS}>In-Progress</option>
                           <option value={LegalStatus.UNDER_REVIEW}>Under Review</option>
                           <option value={LegalStatus.DRAFTED}>Drafted</option>
+                          <option value={LegalStatus.SENT}>Sent</option>
+                          <option value={LegalStatus.RECEIVED}>Received</option>
                           <option value={LegalStatus.EXECUTED}>Executed</option>
                           <option value={LegalStatus.REJECTED}>Rejected</option>
                         </select>
                       </div>
 
                       <div>
-                        <Label className="text-[10px] font-semibold text-slate-600">Legal Document Type</Label>
+                        <Label className="text-[10px] font-semibold text-slate-700">Types of Legal Documents</Label>
                         <select
                           {...register(`services.${index}.legalDocType` as const)}
                           disabled={!canEditLegal}
-                          className={`w-full mt-0.5 h-7 rounded border border-slate-200 px-2 text-[11px] ${
-                            !canEditLegal ? "bg-slate-100 text-slate-500 cursor-not-allowed" : "bg-white"
-                          }`}
+                          className={`w-full mt-1 h-8 rounded-lg border border-slate-200 px-2 text-[11px] font-medium ${!canEditLegal ? "bg-slate-100 text-slate-500 cursor-not-allowed" : "bg-white"
+                            }`}
                         >
                           <option value="Service Agreement">Service Agreement</option>
                           <option value="Non-Disclosure Agreement (NDA)">NDA</option>
+                          <option value="Undertaking (UT)">Undertaking (UT)</option>
                           <option value="Memorandum of Understanding (MOU)">MOU</option>
-                          <option value="Power of Attorney (POA)">Power of Attorney</option>
+                          <option value="Power of Attorney (POA)">Power of Attorney (POA)</option>
                           <option value="Retainership Agreement">Retainership Agreement</option>
                           <option value="Board Resolution">Board Resolution</option>
                         </select>
                       </div>
 
                       <div>
-                        <Label className="text-[10px] font-semibold text-slate-600">Agreement Terms</Label>
+                        <Label className="text-[10px] font-semibold text-slate-700">Agreement Terms</Label>
                         <Input
                           {...register(`services.${index}.agreementTerms` as const)}
-                          placeholder="Specific terms or milestones"
+                          placeholder="Agreement terms or milestones"
                           disabled={!canEditLegal}
-                          className={`text-[11px] h-7 mt-0.5 ${
-                            !canEditLegal ? "bg-slate-100 text-slate-500 cursor-not-allowed" : "bg-white"
-                          }`}
+                          className={`text-[11px] h-8 mt-1 ${!canEditLegal ? "bg-slate-100 text-slate-500 cursor-not-allowed" : "bg-white"
+                            }`}
+                        />
+                      </div>
+
+                      <div>
+                        <Label className="text-[10px] font-semibold text-slate-700">Legal Remarks</Label>
+                        <Input
+                          {...register(`services.${index}.legalRemarks` as const)}
+                          placeholder="Client signature, queries, notes"
+                          disabled={!canEditLegal}
+                          className={`text-[11px] h-8 mt-1 ${!canEditLegal ? "bg-slate-100 text-slate-500 cursor-not-allowed" : "bg-white"
+                            }`}
                         />
                       </div>
                     </div>
@@ -1276,7 +1290,7 @@ export default function DealFormModal({
             <div className="flex items-center gap-2 border-b border-slate-200/60 pb-3">
               <UploadCloud className="h-4 w-4 text-[#ACCAD5]" />
               <h4 className="text-xs font-bold uppercase tracking-wider text-slate-800">
-                7. Attachments & Contracts (Cloudflare R2 Storage)
+                7. Attachments & Contracts
               </h4>
             </div>
 
@@ -1287,15 +1301,20 @@ export default function DealFormModal({
                   Payment Proof / Screenshot
                 </Label>
                 {screenshotPreview && (
-                  <a
-                    href={screenshotPreview}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="text-[11px] text-[#F0944D] hover:underline flex items-center gap-1"
+                  <button
+                    type="button"
+                    onClick={() =>
+                      openDocumentPreview(
+                        screenshotPreview,
+                        "Uploaded Payment Proof",
+                        "image"
+                      )
+                    }
+                    className="text-[11px] text-[#F0944D] hover:underline flex items-center gap-1 cursor-pointer"
                   >
-                    <ExternalLink className="h-3 w-3" />
+                    <Eye className="h-3 w-3" />
                     View Proof
-                  </a>
+                  </button>
                 )}
               </div>
 
@@ -1376,16 +1395,19 @@ export default function DealFormModal({
                       </div>
 
                       <div className="flex items-center gap-2 shrink-0">
-                        <a
-                          href={doc.fileUrl}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          download
-                          className="text-sky-600 hover:text-sky-700 flex items-center gap-1 text-[11px] font-medium hover:underline"
+                        <button
+                          type="button"
+                          onClick={() =>
+                            openDocumentPreview(
+                              doc.fileUrl,
+                              `${doc.title} (${doc.docType.replace(/_/g, " ")})`
+                            )
+                          }
+                          className="text-sky-600 hover:text-sky-700 flex items-center gap-1 text-[11px] font-medium hover:underline cursor-pointer"
                         >
-                          <ExternalLink className="h-3 w-3" />
-                          View / Download
-                        </a>
+                          <Eye className="h-3 w-3" />
+                          Preview Document
+                        </button>
                         <button
                           type="button"
                           title="Remove document"
@@ -1464,16 +1486,16 @@ export default function DealFormModal({
                     {watch("accountsStatus") === "DRAFT"
                       ? "Complete required fields and send to Accounts for payment verification."
                       : watch("accountsStatus") === "PENDING_ACCOUNTS"
-                      ? "Under review by Accounts."
-                      : watch("accountsStatus") === "ACCOUNTS_VERIFIED"
-                      ? "Verified by Accounts. Ready for Legal drafting and handover."
-                      : watch("accountsStatus") === "SENT_TO_LEGAL"
-                      ? "Legal has prepared documentation. Ready to dispatch to Operations (auto-spawns execution child records)."
-                      : watch("accountsStatus") === "SENT_TO_OPERATION"
-                      ? "Child operational execution files are currently active under Operations."
-                      : watch("accountsStatus") === "QUALITY"
-                      ? "All child operations completed! Parent Deal is rolled up to Quality for final audit."
-                      : "Deal active."}
+                        ? "Under review by Accounts."
+                        : watch("accountsStatus") === "ACCOUNTS_VERIFIED"
+                          ? "Verified by Accounts. Ready for Legal drafting and handover."
+                          : watch("accountsStatus") === "SENT_TO_LEGAL"
+                            ? "Legal has prepared documentation. Ready to dispatch to Operations (auto-spawns execution child records)."
+                            : watch("accountsStatus") === "SENT_TO_OPERATION"
+                              ? "Child operational execution files are currently active under Operations."
+                              : watch("accountsStatus") === "QUALITY"
+                                ? "All child operations completed! Parent Deal is rolled up to Quality for final audit."
+                                : "Deal active."}
                   </p>
                 </div>
 

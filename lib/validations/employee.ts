@@ -76,18 +76,42 @@ export const step4DepartmentSchema = z.object({
 
 // Step 5: Bank & Statutory Details Schema
 export const step5BankSchema = z.object({
-  bankAccountNumber: z.string().regex(BANK_ACC_REGEX, "Bank account must be 9-18 digits"),
-  bankName: z.string().min(2, "Bank name is required"),
-  ifscCode: z.string().regex(/^[A-Za-z]{4}0[A-Za-z0-9]{6}$/, "Enter valid IFSC (e.g. HDFC0000006)"),
-  panNumber: z.string().regex(/^[A-Za-z]{5}[0-9]{4}[A-Za-z]{1}$/, "Enter valid 10-char PAN (e.g. ABCDE1234F)"),
-  aadhaarNumber: z.string().regex(AADHAAR_REGEX, "Aadhaar must be exactly 12 digits"),
-  passportNumber: z.string().optional(),
-  drivingLicenseNumber: z.string().optional(),
+  bankAccountNumber: z
+    .string()
+    .trim()
+    .transform((val) => val.replace(/[\s-]/g, ""))
+    .refine((val) => /^\d{9,18}$/.test(val), {
+      message: "Bank account number must be 9 to 18 digits",
+    }),
+  bankName: z.string().trim().min(2, "Bank name is required"),
+  ifscCode: z
+    .string()
+    .trim()
+    .toUpperCase()
+    .refine((val) => /^[A-Z]{4}0[A-Z0-9]{6}$/.test(val), {
+      message: "Enter valid 11-character IFSC (e.g. HDFC0000006)",
+    }),
+  panNumber: z
+    .string()
+    .trim()
+    .toUpperCase()
+    .refine((val) => /^[A-Z]{5}[0-9]{4}[A-Z]{1}$/.test(val), {
+      message: "Enter valid 10-character PAN (e.g. ABCDE1234F)",
+    }),
+  aadhaarNumber: z
+    .string()
+    .trim()
+    .transform((val) => val.replace(/[\s-]/g, ""))
+    .refine((val) => /^\d{12}$/.test(val), {
+      message: "Aadhaar number must be exactly 12 digits",
+    }),
+  passportNumber: z.string().trim().optional(),
+  drivingLicenseNumber: z.string().trim().optional(),
   salaryEntity: SalaryEntityEnum.default("BSPL"),
   pfApplicable: z.boolean().default(true),
-  esicNumber: z.string().optional(),
-  uanNumber: z.string().optional(),
-  medicalInsuranceNumber: z.string().optional(),
+  esicNumber: z.string().trim().optional(),
+  uanNumber: z.string().trim().optional(),
+  medicalInsuranceNumber: z.string().trim().optional(),
 });
 
 // Step 6: Documents Schema

@@ -33,6 +33,7 @@ import PaymentRecordFormModal from "@/components/crm/PaymentRecordFormModal";
 import PaymentDetailModal from "@/components/crm/PaymentDetailModal";
 import AccountsPaymentVerifyModal from "@/components/crm/AccountsPaymentVerifyModal";
 import BulkUploadModal, { BulkUploadColumnDef } from "@/components/crm/BulkUploadModal";
+import { openDocumentPreview } from "@/components/modals/DocumentPreviewModal";
 import ConfirmationModal from "@/components/ui/confirmation-modal";
 import {
   SerializedPaymentRecord,
@@ -563,15 +564,21 @@ export default function PaymentsView({
                     {/* Proof Screenshot */}
                     <td className="px-4 py-3.5">
                       {p.screenshotUrl ? (
-                        <a
-                          href={p.screenshotUrl}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="inline-flex items-center gap-1 text-[11px] font-medium text-sky-600 hover:underline"
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            openDocumentPreview(
+                              p.screenshotUrl!,
+                              `Payment Proof — ${p.clientName} (₹${p.amount.toLocaleString("en-IN")})`,
+                              "image"
+                            );
+                          }}
+                          className="inline-flex items-center gap-1 text-[11px] font-medium text-sky-600 hover:text-sky-800 hover:underline cursor-pointer"
                         >
                           <Eye className="h-3 w-3" />
                           Screenshot
-                        </a>
+                        </button>
                       ) : (
                         <span className="text-slate-400 text-[11px] italic">None</span>
                       )}

@@ -66,7 +66,7 @@ export default async function OperationsPage({ searchParams }: PageProps) {
   const masterData =
     masterRes.success && masterRes.data
       ? masterRes.data
-      : { teamLeaders: [], teamMembers: [], qualityAuditors: [] };
+      : { teamLeaders: [], teamMembers: [], qualityAuditors: [], allEmployees: [], caCsList: [] };
 
   return (
     <PageTransition>

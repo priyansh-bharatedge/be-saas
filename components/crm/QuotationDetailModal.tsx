@@ -19,12 +19,14 @@ import {
   Download,
   Edit2,
   ExternalLink,
+  Eye,
   IndianRupee,
   Layers,
   Send,
   User,
 } from "lucide-react";
 import { SerializedQuotation } from "@/lib/validations/quotation";
+import { openDocumentPreview } from "@/components/modals/DocumentPreviewModal";
 
 interface QuotationDetailModalProps {
   quotation: SerializedQuotation | null;

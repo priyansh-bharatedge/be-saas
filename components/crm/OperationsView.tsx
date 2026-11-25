@@ -38,6 +38,8 @@ import {
   QualityAuditFormData,
   bulkOperationSchema,
   TEAM_TYPES,
+  OPERATION_STAGES,
+  normalizeTeamType,
 } from "@/lib/validations/operation";
 import {
   updateOperationWorkflowAction,
@@ -67,6 +69,12 @@ export default function OperationsView({
   const [operations, setOperations] = useState<SerializedOperation[]>(initialOperations);
   const [activeTab, setActiveTab] = useState<"ALL" | "COMPLETED" | "PENDING">("ALL");
   const [selectedTeamType, setSelectedTeamType] = useState<string>("ALL");
+  const [selectedStage, setSelectedStage] = useState<string>("ALL");
+  const [selectedCompanyType, setSelectedCompanyType] = useState<string>("ALL");
+  const [selectedTlId, setSelectedTlId] = useState<string>("ALL");
+  const [selectedTmId, setSelectedTmId] = useState<string>("ALL");
+  const [dateFrom, setDateFrom] = useState<string>("");
+  const [dateTo, setDateTo] = useState<string>("");
   const [search, setSearch] = useState("");
 
   // Modal states
@@ -88,20 +96,66 @@ export default function OperationsView({
 
   // Metrics
   const totalCount = operations.length;
-  const pendingOperationsCount = operations.filter((op) => op.stage === OperationStage.OPERATION).length;
-  const qualityReviewCount = operations.filter((op) => op.stage === OperationStage.QUALITY).length;
-  const completedApprovedCount = operations.filter((op) => op.status === "COMPLETED").length;
+  const pendingOperationsCount = operations.filter(
+    (op) => op.stage === OperationStage.OPERATION && op.status !== "COMPLETED"
+  ).length;
+  const qualityReviewCount = operations.filter(
+    (op) => op.stage === OperationStage.QUALITY || op.internalStage === "Closed Won"
+  ).length;
+  const completedApprovedCount = operations.filter((op) => op.status === "COMPLETED" || op.status === "Approved").length;
+
+  const isAnyFilterActive =
+    activeTab !== "ALL" ||
+    selectedTeamType !== "ALL" ||
+    selectedStage !== "ALL" ||
+    selectedCompanyType !== "ALL" ||
+    selectedTlId !== "ALL" ||
+    selectedTmId !== "ALL" ||
+    Boolean(dateFrom) ||
+    Boolean(dateTo) ||
+    Boolean(search.trim());
+
+  const resetFilters = () => {
+    setActiveTab("ALL");
+    setSelectedTeamType("ALL");
+    setSelectedStage("ALL");
+    setSelectedCompanyType("ALL");
+    setSelectedTlId("ALL");
+    setSelectedTmId("ALL");
+    setDateFrom("");
+    setDateTo("");
+    setSearch("");
+  };
 
   // Filtered List
   const filteredOperations = operations.filter((op) => {
     // 1. 3 Dynamic Tabs
-    if (activeTab === "COMPLETED" && op.stage !== OperationStage.QUALITY) return false;
-    if (activeTab === "PENDING" && op.stage !== OperationStage.OPERATION) return false;
+    if (activeTab === "COMPLETED" && op.stage !== OperationStage.QUALITY && op.internalStage !== "Closed Won") return false;
+    if (activeTab === "PENDING" && (op.stage === OperationStage.QUALITY || op.internalStage === "Closed Won")) return false;
 
     // 2. Team Type Filter
-    if (selectedTeamType !== "ALL" && op.teamType !== selectedTeamType) return false;
+    if (selectedTeamType !== "ALL" && normalizeTeamType(op.teamType) !== normalizeTeamType(selectedTeamType)) return false;
 
-    // 3. Search Query
+    // 3. Stage Dropdown Filter
+    if (selectedStage !== "ALL" && op.internalStage !== selectedStage) return false;
+
+    // 4. Company Type Filter
+    if (selectedCompanyType !== "ALL") {
+      const cType = (op.companyType || (op.workflowData as any)?.companyType || "").toLowerCase();
+      if (!cType.includes(selectedCompanyType.toLowerCase())) return false;
+    }
+
+    // 5. Assigned TL Filter
+    if (selectedTlId !== "ALL" && op.assignedTlId !== selectedTlId) return false;
+
+    // 6. Assigned TM Filter
+    if (selectedTmId !== "ALL" && op.assignedTmId !== selectedTmId) return false;
+
+    // 7. Date Range Filter
+    if (dateFrom && new Date(op.createdAt) < new Date(dateFrom)) return false;
+    if (dateTo && new Date(op.createdAt) > new Date(dateTo + "T23:59:59")) return false;
+
+    // 8. Search Query
     if (search.trim()) {
       const q = search.toLowerCase().trim();
       const match =
@@ -110,10 +164,13 @@ export default function OperationsView({
         op.companyName.toLowerCase().includes(q) ||
         op.clientName.toLowerCase().includes(q) ||
         op.clientPhone.includes(q) ||
+        (op.clientEmail && op.clientEmail.toLowerCase().includes(q)) ||
         op.serviceName.toLowerCase().includes(q) ||
         op.internalStage.toLowerCase().includes(q) ||
         (op.assignedTlName && op.assignedTlName.toLowerCase().includes(q)) ||
-        (op.assignedTmName && op.assignedTmName.toLowerCase().includes(q));
+        (op.assignedTmName && op.assignedTmName.toLowerCase().includes(q)) ||
+        (op.caCs1Name && op.caCs1Name.toLowerCase().includes(q)) ||
+        (op.caCs2Name && op.caCs2Name.toLowerCase().includes(q));
       if (!match) return false;
     }
 
@@ -391,32 +448,139 @@ export default function OperationsView({
         )}
       </div>
 
-      {/* 3. FILTERS & SEARCH BAR */}
-      <div className="flex flex-col sm:flex-row items-center justify-between gap-3 bg-white/60 backdrop-blur-md p-3 rounded-2xl border border-slate-200/80">
-        <div className="relative w-full sm:w-80">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-400" />
-          <Input
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            placeholder="Search operation #, deal, company, client, TM..."
-            className="pl-9 h-9 text-xs bg-white/80"
-          />
+      {/* 3. DYNAMIC FILTERS & SEARCH BAR */}
+      <div className="bg-white/70 backdrop-blur-md p-4 rounded-2xl border border-slate-200/80 shadow-xs space-y-3">
+        {/* Row 1: Search, Team Department, Stage, Company Type */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-400" />
+            <Input
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Search op #, deal, company, TM, CA..."
+              className="pl-9 h-9 text-xs bg-white/90"
+            />
+          </div>
+
+          <div className="flex items-center gap-1.5">
+            <Filter className="h-3.5 w-3.5 text-slate-400 shrink-0" />
+            <select
+              value={selectedTeamType}
+              onChange={(e) => setSelectedTeamType(e.target.value)}
+              className="w-full h-9 rounded-lg border border-slate-300 bg-white px-2.5 text-xs text-slate-700 focus:outline-hidden focus:ring-2 focus:ring-[#F0944D]/50 focus:border-[#F0944D]"
+            >
+              <option value="ALL">All Departments</option>
+              {TEAM_TYPES.map((t) => (
+                <option key={t} value={t}>
+                  {t}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div>
+            <select
+              value={selectedStage}
+              onChange={(e) => setSelectedStage(e.target.value)}
+              className="w-full h-9 rounded-lg border border-slate-300 bg-white px-2.5 text-xs text-slate-700 focus:outline-hidden focus:ring-2 focus:ring-[#F0944D]/50 focus:border-[#F0944D]"
+            >
+              <option value="ALL">All Stages (Workflow)</option>
+              {OPERATION_STAGES.map((s) => (
+                <option key={s} value={s}>
+                  {s}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div>
+            <select
+              value={selectedCompanyType}
+              onChange={(e) => setSelectedCompanyType(e.target.value)}
+              className="w-full h-9 rounded-lg border border-slate-300 bg-white px-2.5 text-xs text-slate-700 focus:outline-hidden focus:ring-2 focus:ring-[#F0944D]/50 focus:border-[#F0944D]"
+            >
+              <option value="ALL">All Company Types</option>
+              <option value="PVT LTD">Private Limited</option>
+              <option value="LLP">LLP</option>
+              <option value="Section 8">Section 8 Company</option>
+              <option value="Public Limited">Public Limited</option>
+              <option value="OPC">One Person Company</option>
+              <option value="Sole Proprietorship">Sole Proprietorship</option>
+              <option value="Partnership">Partnership</option>
+            </select>
+          </div>
         </div>
 
-        <div className="flex items-center gap-2 w-full sm:w-auto">
-          <Filter className="h-3.5 w-3.5 text-slate-400" />
-          <select
-            value={selectedTeamType}
-            onChange={(e) => setSelectedTeamType(e.target.value)}
-            className="h-9 rounded-lg border border-slate-300 bg-white px-3 text-xs text-slate-700 focus:outline-hidden focus:ring-2 focus:ring-[#F0944D]/50 focus:border-[#F0944D]"
-          >
-            <option value="ALL">All Team Departments</option>
-            {TEAM_TYPES.map((t) => (
-              <option key={t} value={t}>
-                {t}
-              </option>
-            ))}
-          </select>
+        {/* Row 2: TL, TM, Date From, Date To, Reset */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3 pt-1 border-t border-slate-100">
+          <div>
+            <select
+              value={selectedTlId}
+              onChange={(e) => setSelectedTlId(e.target.value)}
+              className="w-full h-8 rounded-lg border border-slate-300 bg-white px-2 text-xs text-slate-700 focus:outline-hidden focus:ring-2 focus:ring-[#F0944D]/50"
+            >
+              <option value="ALL">All Team Leaders</option>
+              {masterData.teamLeaders.map((tl) => (
+                <option key={tl.id} value={tl.id}>
+                  TL: {tl.name}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div>
+            <select
+              value={selectedTmId}
+              onChange={(e) => setSelectedTmId(e.target.value)}
+              className="w-full h-8 rounded-lg border border-slate-300 bg-white px-2 text-xs text-slate-700 focus:outline-hidden focus:ring-2 focus:ring-[#F0944D]/50"
+            >
+              <option value="ALL">All Team Members</option>
+              {masterData.teamMembers.map((tm) => (
+                <option key={tm.id} value={tm.id}>
+                  TM: {tm.name}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div className="flex items-center gap-1.5">
+            <span className="text-[10px] font-semibold text-slate-400 shrink-0">From:</span>
+            <input
+              type="date"
+              value={dateFrom}
+              onChange={(e) => setDateFrom(e.target.value)}
+              className="w-full h-8 rounded-lg border border-slate-300 bg-white px-2 text-xs text-slate-700 focus:outline-hidden focus:ring-1 focus:ring-[#F0944D]"
+            />
+          </div>
+
+          <div className="flex items-center gap-1.5">
+            <span className="text-[10px] font-semibold text-slate-400 shrink-0">To:</span>
+            <input
+              type="date"
+              value={dateTo}
+              onChange={(e) => setDateTo(e.target.value)}
+              className="w-full h-8 rounded-lg border border-slate-300 bg-white px-2 text-xs text-slate-700 focus:outline-hidden focus:ring-1 focus:ring-[#F0944D]"
+            />
+          </div>
+
+          <div className="flex items-center justify-end">
+            {isAnyFilterActive ? (
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                onClick={resetFilters}
+                className="h-8 text-xs font-semibold text-[#F0944D] hover:bg-orange-50 gap-1 w-full justify-center"
+              >
+                <RotateCcw className="h-3 w-3" />
+                Reset Filters
+              </Button>
+            ) : (
+              <span className="text-[11px] text-slate-400 self-center text-right w-full pr-1">
+                Showing {filteredOperations.length} of {totalCount}
+              </span>
+            )}
+          </div>
         </div>
       </div>
 
@@ -484,6 +648,11 @@ export default function OperationsView({
                         <div className="text-[10px] text-slate-400 truncate max-w-[150px]">
                           {op.clientName} ({op.clientPhone})
                         </div>
+                        {op.dealValue ? (
+                          <div className="text-[10px] font-bold text-emerald-700 mt-0.5">
+                            ₹{op.dealValue.toLocaleString("en-IN")}
+                          </div>
+                        ) : null}
                       </td>
 
                       {/* Service & Team Type */}
@@ -527,7 +696,7 @@ export default function OperationsView({
                         </div>
                       </td>
 
-                      {/* Assigned TL & TM */}
+                      {/* Assigned TL, TM & CA/CS */}
                       <td className="py-3 px-4">
                         <div className="text-[11px] text-slate-700 flex items-center gap-1">
                           <span className="text-slate-400 font-medium">TL:</span>
@@ -537,6 +706,20 @@ export default function OperationsView({
                           <span className="text-slate-400 font-medium">TM:</span>
                           <span className="font-semibold">{op.assignedTmName || "Unassigned"}</span>
                         </div>
+                        {(op.caCs1Name || op.caCs2Name) && (
+                          <div className="text-[10px] text-indigo-700 bg-indigo-50/70 border border-indigo-200/60 rounded px-1.5 py-0.5 mt-1 flex flex-col gap-0.5">
+                            {op.caCs1Name && (
+                              <div className="truncate max-w-[120px]">
+                                <span className="font-medium text-slate-400">CA 1:</span> {op.caCs1Name}
+                              </div>
+                            )}
+                            {op.caCs2Name && (
+                              <div className="truncate max-w-[120px]">
+                                <span className="font-medium text-slate-400">CA 2:</span> {op.caCs2Name}
+                              </div>
+                            )}
+                          </div>
+                        )}
                       </td>
 
                       {/* Status & Score */}

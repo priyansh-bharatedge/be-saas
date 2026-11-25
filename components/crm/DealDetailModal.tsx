@@ -19,8 +19,10 @@ import {
   Download,
   Edit2,
   ExternalLink,
+  Eye,
   FileCheck,
   FileText,
+  GitBranch,
   IndianRupee,
   Layers,
   Phone,
@@ -31,6 +33,7 @@ import {
   X,
 } from "lucide-react";
 import { SerializedDeal } from "@/lib/validations/deal";
+import { openDocumentPreview } from "@/components/modals/DocumentPreviewModal";
 
 interface DealDetailModalProps {
   deal: SerializedDeal | null;
@@ -362,6 +365,86 @@ export default function DealDetailModal({
             </div>
           )}
 
+          {/* Section 4B: Linked Operations Child Records (Visible to Legal, Operations, Quality, Admin) */}
+          {!isSalesUser && (
+            <div className="rounded-xl border border-sky-100 bg-sky-50/20 p-4 space-y-3">
+              <div className="flex items-center justify-between border-b border-sky-100 pb-2">
+                <div className="flex items-center gap-2">
+                  <GitBranch className="h-4 w-4 text-sky-600" />
+                  <h4 className="text-xs font-bold uppercase tracking-wider text-sky-950">
+                    Linked Internal Operations Child Records ({deal.internalOperations?.length || 0})
+                  </h4>
+                </div>
+                <span className="text-[10px] font-semibold text-slate-500">
+                  Auto-spawned per-service fulfillment tasks
+                </span>
+              </div>
+
+              {deal.internalOperations && deal.internalOperations.length > 0 ? (
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left text-xs">
+                    <thead>
+                      <tr className="border-b border-sky-100 text-[10px] font-bold uppercase text-slate-400">
+                        <th className="py-2 px-2">Op Number</th>
+                        <th className="py-2 px-3">Service Name</th>
+                        <th className="py-2 px-3">Team Type</th>
+                        <th className="py-2 px-3">Stage / Status</th>
+                        <th className="py-2 px-3">Assigned TL / TM</th>
+                        <th className="py-2 px-3">CA / CS</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-sky-100/50">
+                      {deal.internalOperations.map((op) => (
+                        <tr key={op.id} className="hover:bg-sky-50/40">
+                          <td className="py-2.5 px-2 font-mono font-bold text-sky-700 text-[11px]">
+                            {op.operationNumber}
+                          </td>
+                          <td className="py-2.5 px-3 font-semibold text-slate-900">
+                            {op.serviceName}
+                          </td>
+                          <td className="py-2.5 px-3">
+                            <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold bg-white border border-slate-200 text-slate-700 shadow-2xs">
+                              {op.teamType}
+                            </span>
+                          </td>
+                          <td className="py-2.5 px-3">
+                            <span className="font-medium text-slate-700 text-xs">
+                              {op.internalStage}
+                            </span>
+                            <span className="ml-1.5 inline-flex items-center px-1.5 py-0.2 rounded text-[9px] font-bold uppercase bg-slate-100 text-slate-600">
+                              {op.status}
+                            </span>
+                          </td>
+                          <td className="py-2.5 px-3 text-slate-600 text-xs">
+                            {op.assignedTlName || op.assignedTmName ? (
+                              <span>
+                                {op.assignedTlName ? `TL: ${op.assignedTlName}` : ""}
+                                {op.assignedTlName && op.assignedTmName ? " • " : ""}
+                                {op.assignedTmName ? `TM: ${op.assignedTmName}` : ""}
+                              </span>
+                            ) : (
+                              <span className="text-slate-400 italic">Unassigned</span>
+                            )}
+                          </td>
+                          <td className="py-2.5 px-3 text-slate-600 text-xs">
+                            {op.caCs1Name || "—"}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              ) : (
+                <div className="p-4 rounded-xl bg-white/70 border border-dashed border-sky-200 text-center text-xs text-slate-500">
+                  <p className="font-medium text-slate-700">No child operation records spawned yet.</p>
+                  <p className="text-[11px] text-slate-400 mt-0.5">
+                    Child execution records are dynamically created when Legal finishes agreement fields and clicks &quot;Send to Operations&quot;.
+                  </p>
+                </div>
+              )}
+            </div>
+          )}
+
           {/* Section 5: Attachments & Cloudflare R2 Documents */}
           <div className="rounded-xl border border-slate-200/80 bg-slate-50/40 p-4 space-y-3">
             <div className="flex items-center gap-2 border-b border-slate-200/60 pb-2">
@@ -377,15 +460,20 @@ export default function DealDetailModal({
                 <span className="text-[11px] font-semibold text-slate-500">Payment Screenshot / Proof:</span>
                 {deal.paymentScreenshotUrl ? (
                   <div className="mt-1 flex items-center gap-2">
-                    <a
-                      href={deal.paymentScreenshotUrl}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-sky-200 bg-sky-50 text-sky-700 font-semibold hover:bg-sky-100 transition-colors"
+                    <button
+                      type="button"
+                      onClick={() =>
+                        openDocumentPreview(
+                          deal.paymentScreenshotUrl!,
+                          `Payment Screenshot — ${deal.companyName || deal.contactPerson || "Deal"}`,
+                          "image"
+                        )
+                      }
+                      className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-sky-200 bg-sky-50 text-sky-700 font-semibold hover:bg-sky-100 transition-colors cursor-pointer"
                     >
-                      <ExternalLink className="h-3.5 w-3.5" />
+                      <Eye className="h-3.5 w-3.5" />
                       View Payment Screenshot
-                    </a>
+                    </button>
                   </div>
                 ) : (
                   <p className="text-slate-400 italic text-[11px] mt-0.5">No screenshot uploaded.</p>
@@ -411,15 +499,19 @@ export default function DealDetailModal({
                             <span className="text-[10px] text-slate-400 uppercase">{doc.docType}</span>
                           </div>
                         </div>
-                        <a
-                          href={doc.fileUrl}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="shrink-0 p-1.5 rounded-md hover:bg-slate-100 text-slate-600 transition-colors"
-                          title="Open document"
+                        <button
+                          type="button"
+                          onClick={() =>
+                            openDocumentPreview(
+                              doc.fileUrl,
+                              `${doc.title} (${doc.docType.replace(/_/g, " ")})`
+                            )
+                          }
+                          className="shrink-0 p-1.5 rounded-md hover:bg-slate-100 text-slate-600 hover:text-slate-900 transition-colors cursor-pointer"
+                          title="Preview document"
                         >
-                          <ExternalLink className="h-3.5 w-3.5" />
-                        </a>
+                          <Eye className="h-3.5 w-3.5" />
+                        </button>
                       </div>
                     ))}
                   </div>

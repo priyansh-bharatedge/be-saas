@@ -46,11 +46,15 @@ export default function NotificationBell() {
     const interval = setInterval(loadNotifications, 8000);
 
     const onFocus = () => loadNotifications();
+    const onNotificationUpdate = () => loadNotifications();
+
     window.addEventListener("focus", onFocus);
+    window.addEventListener("notification-updated", onNotificationUpdate);
 
     return () => {
       clearInterval(interval);
       window.removeEventListener("focus", onFocus);
+      window.removeEventListener("notification-updated", onNotificationUpdate);
     };
   }, []);
 

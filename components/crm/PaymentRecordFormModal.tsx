@@ -25,8 +25,10 @@ import {
   FileText,
   Search,
   ExternalLink,
+  Eye,
   Image as ImageIcon,
 } from "lucide-react";
+import { openDocumentPreview } from "@/components/modals/DocumentPreviewModal";
 import {
   paymentRecordSchema,
   quickClientSchema,
@@ -442,15 +444,20 @@ export default function PaymentRecordFormModal({
             <Label className="text-xs font-semibold text-slate-700 flex items-center justify-between">
               <span>Payment Proof / Screenshot (Cloudflare R2)</span>
               {screenshotPreview && (
-                <a
-                  href={screenshotPreview}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="text-[11px] text-[#F0944D] hover:underline flex items-center gap-1"
+                <button
+                  type="button"
+                  onClick={() =>
+                    openDocumentPreview(
+                      screenshotPreview,
+                      "Uploaded Payment Proof",
+                      "image"
+                    )
+                  }
+                  className="text-[11px] text-[#F0944D] hover:underline flex items-center gap-1 cursor-pointer"
                 >
-                  <ExternalLink className="h-3 w-3" />
+                  <Eye className="h-3 w-3" />
                   View Uploaded File
-                </a>
+                </button>
               )}
             </Label>
 

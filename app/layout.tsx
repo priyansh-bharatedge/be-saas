@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono, Newsreader } from "next/font/google";
 import { Toaster } from "sonner";
+import { GlobalDocumentPreviewModal } from "@/components/modals/DocumentPreviewModal";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -37,6 +38,7 @@ export default function RootLayout({
       <body className="min-h-full flex flex-col font-sans bg-[#FCFBF8] text-slate-900 selection:bg-[#F0944D]/25 selection:text-[#C9681A]">
         {children}
         <Toaster position="top-right" richColors closeButton />
+        <GlobalDocumentPreviewModal />
       </body>
     </html>
   );

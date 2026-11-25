@@ -12,7 +12,7 @@ import {
   TicketStatusUpdateData,
   QualityAuditData,
 } from "@/lib/validations/support";
-import { TicketPriority, TicketStatus, NotificationType } from "@prisma/client";
+import { TicketPriority, TicketStatus, NotificationType, Role, SystemRole } from "@prisma/client";
 import { createNotification } from "@/lib/actions/notifications";
 
 export interface ActionResult<T = unknown> {
@@ -130,6 +130,8 @@ export async function getTicketsAction(params: GetTicketsParams = {}) {
         userScope: {
           canManageAll: scope.canManageAll,
           isQualityDept: scope.department.toLowerCase().includes("quality") || scope.isSuperAdmin,
+          isLegalDept: scope.department.toLowerCase().includes("legal"),
+          isSuperAdmin: scope.isSuperAdmin,
         },
       },
     };
@@ -182,6 +184,43 @@ export async function createTicketAction(formData: TicketCreateData): Promise<Ac
         assignedEmployeeId,
       },
     });
+
+    // Notify Super Admin and Legal Department users (plus assigned employee if any)
+    try {
+      const creatorName = user.name || "Employee";
+
+      // Query Super Admins, Legal Department staff, and assigned employee
+      const recipientEmployees = await db.employee.findMany({
+        where: {
+          OR: [
+            { systemRole: SystemRole.SUPER_ADMIN },
+            { role: Role.Admin },
+            { department: { contains: "Legal", mode: "insensitive" } },
+            ...(assignedEmployeeId ? [{ id: assignedEmployeeId }] : []),
+          ],
+        },
+        select: { id: true },
+      });
+
+      // Strictly deduplicate recipient IDs so no user receives duplicate notifications
+      const uniqueRecipientIds = Array.from(
+        new Set(recipientEmployees.map((e) => e.id))
+      );
+
+      if (uniqueRecipientIds.length > 0) {
+        await db.notification.createMany({
+          data: uniqueRecipientIds.map((recipientId) => ({
+            recipientId,
+            title: `New Support Ticket (${ticket.ticketNumber})`,
+            message: `[${ticket.priority} Priority] "${ticket.subject}" raised by ${creatorName} for ${ticket.customerName}.`,
+            type: NotificationType.ACTION_REQUIRED,
+            actionUrl: "/support/tickets",
+          })),
+        });
+      }
+    } catch (notifErr) {
+      console.warn("[Ticket Creation Notification Error]:", notifErr);
+    }
 
     revalidatePath("/support/tickets");
     revalidatePath("/support");
