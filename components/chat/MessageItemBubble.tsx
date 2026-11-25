@@ -15,6 +15,7 @@ import {
 } from "lucide-react";
 import { MessageItem, ChatAttachmentItem } from "@/lib/actions/chat";
 import { EmojiPickerPopover } from "./EmojiPickerPopover";
+import { openDocumentPreview } from "@/components/modals/DocumentPreviewModal";
 
 interface MessageItemBubbleProps {
   message: MessageItem;
@@ -283,13 +284,17 @@ export function MessageItemBubble({
                       key={idx}
                       className="p-2.5 rounded-xl bg-white/90 border border-slate-200 flex items-center justify-between gap-3 shadow-2xs"
                     >
-                      <div className="flex items-center gap-2.5 min-w-0">
+                      <div
+                        onClick={() => openDocumentPreview(file.url, file.name)}
+                        className="flex items-center gap-2.5 min-w-0 cursor-pointer hover:opacity-80 transition-opacity"
+                        title="Click to preview file"
+                      >
                         <div className="w-8 h-8 rounded-lg bg-slate-50 border border-slate-200/70 flex items-center justify-center shrink-0">
                           {getFileIcon(file.mimeType, file.name)}
                         </div>
                         <div className="min-w-0">
-                          <p className="text-xs font-semibold text-slate-900 truncate">
-                            {file.name || "Download File"}
+                          <p className="text-xs font-semibold text-slate-900 truncate hover:underline">
+                            {file.name || "Preview File"}
                           </p>
                           <p className="text-[10px] text-slate-400 font-mono">
                             {formatFileSize(file.size)}

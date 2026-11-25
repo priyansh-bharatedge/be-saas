@@ -19,6 +19,7 @@ import { Badge } from "@/components/ui/badge";
 import { SocialMediaPost, EmployeeLookupItem, FileAttachment } from "@/lib/validations/operation";
 import { R2MultiFileUpload } from "./R2MultiFileUpload";
 import { EmployeeSelector } from "./EmployeeSelector";
+import { openDocumentPreview } from "@/components/modals/DocumentPreviewModal";
 
 const InstagramIcon = ({ className }: { className?: string }) => (
   <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -437,18 +438,16 @@ export function SocialMediaCalendar({
                 {post.assets && post.assets.length > 0 && (
                   <div className="flex items-center gap-1.5 overflow-x-auto pt-1">
                     {post.assets.map((ast, idx) => (
-                      <a
+                      <button
                         key={idx}
-                        href={ast.url}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="h-8 px-2 rounded-md bg-slate-100 hover:bg-slate-200 text-slate-700 text-[10px] inline-flex items-center gap-1 shrink-0 transition-colors"
-                        title={ast.name}
+                        type="button"
+                        onClick={() => openDocumentPreview(ast.url, ast.name, "image")}
+                        className="h-8 px-2 rounded-md bg-slate-100 hover:bg-slate-200 text-slate-700 text-[10px] inline-flex items-center gap-1 shrink-0 transition-colors cursor-pointer"
+                        title={`Preview ${ast.name}`}
                       >
                         <ImageIcon className="h-3 w-3 text-[#588594]" />
                         <span className="max-w-[100px] truncate">{ast.name}</span>
-                        <ExternalLink className="h-2.5 w-2.5 text-slate-400" />
-                      </a>
+                      </button>
                     ))}
                   </div>
                 )}

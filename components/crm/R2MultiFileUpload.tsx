@@ -7,6 +7,7 @@ import {
   FileText,
   Image as ImageIcon,
   ExternalLink,
+  Eye,
   Trash2,
   Loader2,
   Check,
@@ -14,6 +15,7 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { FileAttachment } from "@/lib/validations/operation";
+import { openDocumentPreview } from "@/components/modals/DocumentPreviewModal";
 
 interface R2MultiFileUploadProps {
   value?: FileAttachment[];
@@ -207,15 +209,14 @@ export function R2MultiFileUpload({
               </div>
 
               <div className="flex items-center gap-1 shrink-0 ml-2">
-                <a
-                  href={file.url}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="p-1 rounded-md text-slate-400 hover:text-slate-800 hover:bg-slate-100 transition-colors"
-                  title="View / Download"
+                <button
+                  type="button"
+                  onClick={() => openDocumentPreview(file.url, file.name)}
+                  className="p-1 rounded-md text-slate-400 hover:text-slate-800 hover:bg-slate-100 transition-colors cursor-pointer"
+                  title="Preview file"
                 >
-                  <ExternalLink className="h-3.5 w-3.5" />
-                </a>
+                  <Eye className="h-3.5 w-3.5" />
+                </button>
                 {!disabled && (
                   <button
                     type="button"

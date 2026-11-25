@@ -17,9 +17,11 @@ import {
   Globe,
   HeartPulse,
   ExternalLink,
+  Eye,
   Download,
   FileCheck,
 } from "lucide-react";
+import { openDocumentPreview } from "@/components/modals/DocumentPreviewModal";
 
 interface EmployeeDetailDrawerProps {
   employee: any | null;
@@ -349,15 +351,19 @@ export function EmployeeDetailDrawer({
                       </div>
 
                       {doc.url ? (
-                        <a
-                          href={doc.url}
-                          target="_blank"
-                          rel="noopener noreferrer"
+                        <button
+                          type="button"
+                          onClick={() =>
+                            openDocumentPreview(
+                              doc.url,
+                              `${doc.label} — ${employee.user?.name || employee.user?.email || "Employee"}`
+                            )
+                          }
                           className="px-2.5 py-1 rounded-lg bg-white border border-slate-200 hover:border-[#F0944D] hover:text-[#C66318] text-slate-700 text-[11px] font-semibold transition-all flex items-center gap-1 shrink-0 shadow-2xs cursor-pointer"
                         >
                           <span>View</span>
-                          <ExternalLink className="h-3 w-3" />
-                        </a>
+                          <Eye className="h-3 w-3" />
+                        </button>
                       ) : (
                         <span className="text-[10px] text-slate-300 font-mono shrink-0">Missing</span>
                       )}

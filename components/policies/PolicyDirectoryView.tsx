@@ -17,6 +17,7 @@ import {
   Download,
   Calendar,
   ExternalLink,
+  Eye,
   Edit3,
   Archive,
   BookOpen,
@@ -31,6 +32,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import ConfirmationModal from "@/components/ui/confirmation-modal";
 import { toast } from "sonner";
+import { openDocumentPreview } from "@/components/modals/DocumentPreviewModal";
 
 interface PolicyDirectoryViewProps {
   initialPolicies: SerializedPolicy[];
@@ -276,15 +278,20 @@ export default function PolicyDirectoryView({
 
                   <div className="flex items-center gap-1.5">
                     {policy.documentUrl && (
-                      <a
-                        href={policy.documentUrl}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="h-8 w-8 rounded-full bg-slate-50 hover:bg-slate-100 text-slate-600 flex items-center justify-center border border-slate-200 transition-colors shadow-2xs"
-                        title="Download / View Attached PDF"
+                      <button
+                        type="button"
+                        onClick={() =>
+                          openDocumentPreview(
+                            policy.documentUrl!,
+                            `${policy.title} — Official Document`,
+                            "pdf"
+                          )
+                        }
+                        className="h-8 w-8 rounded-full bg-slate-50 hover:bg-slate-100 text-slate-600 flex items-center justify-center border border-slate-200 transition-colors shadow-2xs cursor-pointer"
+                        title="Preview Attached PDF"
                       >
-                        <Download className="h-3.5 w-3.5 text-[#588594]" />
-                      </a>
+                        <Eye className="h-3.5 w-3.5 text-[#588594]" />
+                      </button>
                     )}
 
                     {isHRAdmin && (
@@ -346,15 +353,20 @@ export default function PolicyDirectoryView({
                 <span className="text-xs text-slate-400">Issued by: {readingPolicy.createdBy || "HR Operations"}</span>
                 <div className="flex items-center gap-2">
                   {readingPolicy.documentUrl && (
-                    <a
-                      href={readingPolicy.documentUrl}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="inline-flex items-center gap-1.5 px-4 py-2 rounded-full bg-[#588594] hover:bg-[#466C78] text-white text-xs font-semibold shadow-sm transition-all"
+                    <button
+                      type="button"
+                      onClick={() =>
+                        openDocumentPreview(
+                          readingPolicy.documentUrl!,
+                          `${readingPolicy.title} — Official Document`,
+                          "pdf"
+                        )
+                      }
+                      className="inline-flex items-center gap-1.5 px-4 py-2 rounded-full bg-[#588594] hover:bg-[#466C78] text-white text-xs font-semibold shadow-sm transition-all cursor-pointer"
                     >
-                      <Download className="h-3.5 w-3.5" />
-                      Download Official Document
-                    </a>
+                      <Eye className="h-3.5 w-3.5" />
+                      Preview Official Document
+                    </button>
                   )}
                   <Button
                     variant="outline"

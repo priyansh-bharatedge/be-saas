@@ -42,6 +42,7 @@ import {
   normalizeTeamType,
   FileAttachment,
 } from "@/lib/validations/operation";
+import { openDocumentPreview } from "@/components/modals/DocumentPreviewModal";
 
 interface OperationDetailModalProps {
   operation: SerializedOperation | null;
@@ -78,12 +79,11 @@ export default function OperationDetailModal({
         </span>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5">
           {attachments.map((file, idx) => (
-            <a
+            <button
               key={idx}
-              href={file.url}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="flex items-center justify-between p-2 rounded-lg bg-white border border-slate-200/80 hover:border-[#F0944D]/50 hover:bg-orange-50/20 transition-all text-xs group"
+              type="button"
+              onClick={() => openDocumentPreview(file.url, file.name)}
+              className="flex items-center justify-between p-2 rounded-lg bg-white border border-slate-200/80 hover:border-[#F0944D]/50 hover:bg-orange-50/20 transition-all text-xs group cursor-pointer text-left w-full"
             >
               <div className="flex items-center gap-2 truncate pr-2">
                 <FileText className="h-3.5 w-3.5 text-[#F0944D] shrink-0" />
@@ -91,8 +91,8 @@ export default function OperationDetailModal({
                   {file.name}
                 </span>
               </div>
-              <Download className="h-3.5 w-3.5 text-slate-400 group-hover:text-[#F0944D] shrink-0" />
-            </a>
+              <Eye className="h-3.5 w-3.5 text-slate-400 group-hover:text-[#F0944D] shrink-0" />
+            </button>
           ))}
         </div>
       </div>
@@ -557,15 +557,19 @@ export default function OperationDetailModal({
                     {getStatusBadge(workflowData.dprPitchDeck?.status)}
                   </div>
                   {workflowData.dprPitchDeck?.draftUrl && (
-                    <a
-                      href={workflowData.dprPitchDeck.draftUrl}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="text-xs text-[#F0944D] hover:underline flex items-center gap-1"
+                    <button
+                      type="button"
+                      onClick={() =>
+                        openDocumentPreview(
+                          workflowData.dprPitchDeck!.draftUrl!,
+                          "DPR / Pitch Deck Draft"
+                        )
+                      }
+                      className="text-xs text-[#F0944D] hover:underline flex items-center gap-1 cursor-pointer"
                     >
-                      <ExternalLink className="h-3.5 w-3.5" />
+                      <Eye className="h-3.5 w-3.5" />
                       View Pitch Deck Draft
-                    </a>
+                    </button>
                   )}
                   {renderAttachments(workflowData.dprPitchDeck?.attachments)}
                 </div>

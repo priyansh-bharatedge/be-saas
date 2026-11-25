@@ -91,15 +91,20 @@ export default function QuotationDetailModal({
             <div className="flex items-center gap-2">
               {getStatusBadge(quotation.status)}
               {quotation.pdfUrl && (
-                <a
-                  href={quotation.pdfUrl}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="inline-flex items-center gap-1.5 h-8 px-3 rounded-lg border border-sky-200 bg-sky-50 text-sky-700 text-xs font-semibold hover:bg-sky-100 transition-colors"
+                <button
+                  type="button"
+                  onClick={() =>
+                    openDocumentPreview(
+                      quotation.pdfUrl!,
+                      `${quotation.quotationNumber} — Quotation PDF`,
+                      "pdf"
+                    )
+                  }
+                  className="inline-flex items-center gap-1.5 h-8 px-3 rounded-lg border border-sky-200 bg-sky-50 text-sky-700 text-xs font-semibold hover:bg-sky-100 transition-colors cursor-pointer"
                 >
-                  <Download className="h-3.5 w-3.5" />
+                  <Eye className="h-3.5 w-3.5" />
                   View PDF
-                </a>
+                </button>
               )}
               {canEdit && onEdit && (
                 <Button
@@ -279,15 +284,20 @@ export default function QuotationDetailModal({
             Close
           </Button>
           {quotation.pdfUrl && (
-            <a
-              href={quotation.pdfUrl}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="inline-flex items-center gap-1.5 h-9 px-3 rounded-md bg-gradient-to-r from-[#ACCAD5] to-[#F0944D] text-slate-900 text-xs font-semibold hover:opacity-95 shadow-xs"
+            <button
+              type="button"
+              onClick={() =>
+                openDocumentPreview(
+                  quotation.pdfUrl!,
+                  `${quotation.quotationNumber} — Quotation PDF`,
+                  "pdf"
+                )
+              }
+              className="inline-flex items-center gap-1.5 h-9 px-3 rounded-md bg-gradient-to-r from-[#ACCAD5] to-[#F0944D] text-slate-900 text-xs font-semibold hover:opacity-95 shadow-xs cursor-pointer"
             >
-              <Download className="h-3.5 w-3.5" />
-              Download Quotation PDF
-            </a>
+              <Eye className="h-3.5 w-3.5" />
+              Preview Quotation PDF
+            </button>
           )}
         </div>
       </DialogContent>

@@ -34,8 +34,10 @@ import {
   FileCheck,
   Sparkles,
   ExternalLink,
+  Eye,
   Trash2,
 } from "lucide-react";
+import { openDocumentPreview } from "@/components/modals/DocumentPreviewModal";
 import { motion, AnimatePresence } from "framer-motion";
 import { toast } from "sonner";
 
@@ -1319,16 +1321,15 @@ export function EmployeeWizard({ leaders = [] }: EmployeeWizardProps) {
                         <div className="flex items-center gap-1.5 shrink-0">
                           {isAttached && (
                             <>
-                              <a
-                                href={doc.val}
-                                target="_blank"
-                                rel="noopener noreferrer"
+                              <button
+                                type="button"
+                                onClick={() => doc.val && openDocumentPreview(doc.val, doc.label)}
                                 title="View / Preview Document"
-                                className="px-2 py-1 rounded-xl bg-white border border-slate-200 text-slate-700 hover:text-slate-900 hover:border-slate-300 text-[11px] font-semibold transition-all flex items-center gap-1 shadow-2xs"
+                                className="px-2 py-1 rounded-xl bg-white border border-slate-200 text-slate-700 hover:text-slate-900 hover:border-slate-300 text-[11px] font-semibold transition-all flex items-center gap-1 shadow-2xs cursor-pointer"
                               >
-                                <ExternalLink className="h-3 w-3 text-slate-500" />
+                                <Eye className="h-3 w-3 text-slate-500" />
                                 <span className="hidden sm:inline">View</span>
-                              </a>
+                              </button>
                               <button
                                 type="button"
                                 onClick={() => handleRemoveFile(doc.key, doc.label)}

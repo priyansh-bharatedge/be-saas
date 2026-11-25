@@ -30,6 +30,7 @@ import { toast } from "sonner";
 import QuotationFormModal from "@/components/crm/QuotationFormModal";
 import QuotationDetailModal from "@/components/crm/QuotationDetailModal";
 import ConfirmationModal from "@/components/ui/confirmation-modal";
+import { openDocumentPreview } from "@/components/modals/DocumentPreviewModal";
 import {
   SerializedQuotation,
   QuotationFormData,
@@ -478,15 +479,20 @@ export default function QuotationsView({
 
                         {/* View / Download PDF */}
                         {q.pdfUrl ? (
-                          <a
-                            href={q.pdfUrl}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="inline-flex items-center justify-center h-8 w-8 rounded-lg text-emerald-600 hover:text-emerald-800 hover:bg-emerald-50 transition-colors"
-                            title="Download Official PDF"
+                          <button
+                            type="button"
+                            onClick={() =>
+                              openDocumentPreview(
+                                q.pdfUrl!,
+                                `${q.quotationNumber} — Quotation PDF`,
+                                "pdf"
+                              )
+                            }
+                            className="inline-flex items-center justify-center h-8 w-8 rounded-lg text-emerald-600 hover:text-emerald-800 hover:bg-emerald-50 transition-colors cursor-pointer"
+                            title="Preview Quotation PDF"
                           >
-                            <Download className="h-3.5 w-3.5" />
-                          </a>
+                            <Eye className="h-3.5 w-3.5" />
+                          </button>
                         ) : null}
 
                         {/* Edit Quotation */}

@@ -465,7 +465,7 @@ export default function DealDetailModal({
                       onClick={() =>
                         openDocumentPreview(
                           deal.paymentScreenshotUrl!,
-                          `Payment Screenshot — ${deal.companyName || deal.contactPerson || "Deal"}`,
+                          `Payment Screenshot — ${deal.companyName || deal.title || "Deal"}`,
                           "image"
                         )
                       }

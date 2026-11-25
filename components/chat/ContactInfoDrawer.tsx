@@ -20,6 +20,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { MessageItem } from "@/lib/actions/chat";
 import { formatWhatsAppLastSeen } from "@/lib/chat/presence";
+import { openDocumentPreview } from "@/components/modals/DocumentPreviewModal";
 
 export interface ContactInfoProfile {
   id: string;
@@ -441,12 +442,16 @@ export function ContactInfoDrawer({
                         key={doc.id}
                         className="p-2.5 rounded-xl bg-white border border-slate-200/70 hover:border-slate-300 hover:bg-slate-50/70 transition-all flex items-center justify-between gap-2 shadow-2xs"
                       >
-                        <div className="flex items-center gap-2.5 min-w-0">
+                        <div
+                          onClick={() => openDocumentPreview(doc.url, doc.name)}
+                          className="flex items-center gap-2.5 min-w-0 cursor-pointer hover:opacity-80 transition-opacity"
+                          title="Click to preview file"
+                        >
                           <div className="w-8 h-8 rounded-lg bg-[#EBF3F6] text-[#3D6472] flex items-center justify-center shrink-0">
                             <FileText className="h-4 w-4" />
                           </div>
                           <div className="min-w-0">
-                            <p className="text-xs font-semibold text-slate-800 truncate" title={doc.name}>
+                            <p className="text-xs font-semibold text-slate-800 truncate hover:underline" title={doc.name}>
                               {doc.name}
                             </p>
                             <p className="text-[10px] text-slate-400">
