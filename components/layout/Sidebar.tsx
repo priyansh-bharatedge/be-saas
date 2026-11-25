@@ -359,7 +359,7 @@ export function Sidebar({ user }: SidebarProps) {
   };
 
   const productInfo = getProductInfo();
-  const displayName = user?.name || "Vikramaditya";
+  const displayName = user?.name || "Vimlendu Mishra";
   const displayRole = user?.jobTitle || (user?.role ? `${user.role} Admin` : "Enterprise Admin");
   const initial = displayName.charAt(0).toUpperCase();
 

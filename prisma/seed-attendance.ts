@@ -35,7 +35,7 @@ async function main() {
       ],
     },
     {
-      empId: "BE-EMP-002", // Vikramaditya Sharma (Executive)
+      empId: "BE-EMP-002", // Vimlendu Mishra (Managing Director & Super Admin)
       todayStatus: TrackerStatus.ACTIVE,
       clockInOffsetHours: 8.0,
       sessions: [

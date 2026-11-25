@@ -13,7 +13,7 @@ export const ENTERPRISE_SEED_USERS: EnterpriseUserSeed[] = [
   {
     id: "usr-admin-01",
     email: "md@bharat-edge.com",
-    name: "Vikramaditya Sharma",
+    name: "Vimlendu Mishra",
     role: Role.Admin,
     jobTitle: "Managing Director & Super Admin",
   },

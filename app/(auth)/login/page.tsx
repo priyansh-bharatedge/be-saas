@@ -11,13 +11,9 @@ import {
   Loader2,
   Mail,
   RefreshCw,
-  ShieldCheck,
-  Sparkles,
-  UserCheck,
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { toast } from "sonner";
-import { ENTERPRISE_SEED_USERS } from "@/lib/db/users";
 import {
   requestOtpAction,
   loginWithPasswordAction,
@@ -37,7 +33,6 @@ export default function LoginPage() {
   // Authentication mode: idle (just email), password (email + password), otp (email + 6-digit OTP)
   const [authMode, setAuthMode] = useState<"idle" | "password" | "otp">("idle");
   const [loading, setLoading] = useState(false);
-  const [showPersonaPicker, setShowPersonaPicker] = useState(false);
   const [cooldown, setCooldown] = useState(0);
 
   // React Hook Form
@@ -180,19 +175,6 @@ export default function LoginPage() {
     }
   };
 
-  const handleSelectPersona = (personaEmail: string) => {
-    setValue("email", personaEmail);
-    if (personaEmail === "md@bharat-edge.com") {
-      setValue("password", "B[l2a78Md");
-    } else if (personaEmail === "hr@bharat-edge.com") {
-      setValue("password", "B[l2a78Hr");
-    } else {
-      setValue("password", "Enterprise@2026");
-    }
-    setShowPersonaPicker(false);
-    toast.info(`Selected ${personaEmail}`);
-  };
-
   return (
     <div className="min-h-screen bg-[#FCFAF7] text-[#18191B] flex flex-col justify-between overflow-x-hidden selection:bg-[#F0944D]/30 selection:text-[#C66318]">
       {/* 1. Header: Official BharatEdge Brand Logo */}
@@ -224,7 +206,7 @@ export default function LoginPage() {
         {/* 3. Form Inputs & Authentication Logic */}
         <div className="mt-5 w-full max-w-md px-2 flex flex-col items-center">
           {/* Email ID Input Field (functional, styled with Zod & React Hook Form) */}
-          <div className="w-full relative">
+          <div className="w-full">
             <div className="w-full flex items-center gap-2 px-3.5 py-2.5 bg-white/90 border border-slate-300 rounded-md shadow-xs backdrop-blur-xs text-xs text-slate-800 transition-all focus-within:border-[#F0944D] focus-within:ring-2 focus-within:ring-[#F0944D]/25">
               <Mail className="h-4 w-4 text-slate-400 shrink-0" />
               <input
@@ -235,42 +217,7 @@ export default function LoginPage() {
                 autoComplete="off"
                 className="w-full bg-transparent outline-none text-slate-900 placeholder:text-slate-400 font-mono text-xs"
               />
-              <button
-                type="button"
-                onClick={() => setShowPersonaPicker(!showPersonaPicker)}
-                title="Select demo employee persona"
-                className="text-[11px] font-mono text-slate-400 hover:text-[#C66318] px-1.5 py-0.5 rounded hover:bg-slate-100 transition-colors cursor-pointer shrink-0 flex items-center gap-1"
-              >
-                <Sparkles className="h-3 w-3 text-[#F0944D]" />
-                <span className="hidden sm:inline">Roles</span>
-              </button>
             </div>
-
-            {/* Quick Persona Picker Dropdown */}
-            {showPersonaPicker && (
-              <div className="absolute top-full left-0 right-0 mt-1.5 p-2 bg-white border border-slate-200 rounded-lg shadow-xl z-30 text-left">
-                <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider px-2 py-1">
-                  PostgreSQL Seeded Accounts:
-                </div>
-                <div className="space-y-1">
-                  {ENTERPRISE_SEED_USERS.map((seed) => (
-                    <button
-                      key={seed.id}
-                      type="button"
-                      onClick={() => handleSelectPersona(seed.email)}
-                      className="w-full p-2 rounded hover:bg-[#FDEFE6]/40 flex items-center justify-between text-left text-xs transition-colors cursor-pointer group"
-                    >
-                      <div className="flex items-center gap-2">
-                        <UserCheck className="h-3.5 w-3.5 text-slate-400 group-hover:text-[#C66318]" />
-                        <span className="font-semibold text-slate-900">{seed.name}</span>
-                        <span className="text-[10px] text-slate-500 font-mono">({seed.role})</span>
-                      </div>
-                      <span className="text-[10px] text-slate-400 font-mono">{seed.email}</span>
-                    </button>
-                  ))}
-                </div>
-              </div>
-            )}
           </div>
 
           {/* Conditional Password Input Expander */}
