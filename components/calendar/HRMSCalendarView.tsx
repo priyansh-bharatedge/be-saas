@@ -20,6 +20,7 @@ import {
   Sparkles,
   Info,
   Edit,
+  UploadCloud,
 } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
@@ -27,6 +28,8 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import ConfirmationModal from "@/components/ui/confirmation-modal";
+import BulkImportWizard from "@/components/shared/BulkImportWizard";
+import BulkExportMenu from "@/components/shared/BulkExportMenu";
 import { toast } from "sonner";
 
 interface HRMSCalendarViewProps {
@@ -59,6 +62,7 @@ export default function HRMSCalendarView({
 
   // Floating Event Creation Modal State (matching reference screenshot design)
   const [modalOpen, setModalOpen] = useState(false);
+  const [isImportOpen, setIsImportOpen] = useState(false);
   const [editingEventId, setEditingEventId] = useState<string | null>(null);
   const [selectedDateStr, setSelectedDateStr] = useState("");
   const [eventTitle, setEventTitle] = useState("");
@@ -266,7 +270,7 @@ export default function HRMSCalendarView({
       {/* Main Glassmorphic Calendar Container */}
       <div className="rounded-[36px] bg-white/70 backdrop-blur-2xl border border-white/80 shadow-[0_12px_40px_rgba(0,0,0,0.03)] p-6 sm:p-8">
         {/* Calendar Top Controls: Month/Year Dropdown & Navigation Chevrons */}
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6 pb-4 border-b border-slate-100">
+        <div className="relative z-20 flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6 pb-4 border-b border-slate-100">
           <div className="flex items-center gap-3">
             {/* Month Dropdown */}
             <div className="relative">
@@ -315,8 +319,26 @@ export default function HRMSCalendarView({
             </div>
           </div>
 
-          {/* Right Action: Previous/Next Month & Add Event Button */}
+          {/* Right Action: Previous/Next Month, Export, Import, & Add Event Button */}
           <div className="flex items-center gap-2 self-end sm:self-auto">
+            <BulkExportMenu
+              moduleKey="calendar"
+              totalCount={events.length}
+              filters={{ month: currentMonth, year: currentYear }}
+            />
+
+            {isHRAdmin && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setIsImportOpen(true)}
+                className="rounded-full text-xs gap-1.5 h-9 border-slate-200 text-slate-700 bg-white hover:bg-slate-50 shadow-2xs font-medium cursor-pointer"
+              >
+                <UploadCloud className="h-3.5 w-3.5 text-[#F0944D]" />
+                Import Events
+              </Button>
+            )}
+
             {isHRAdmin && (
               <Button
                 onClick={() => handleCellClick(new Date().toISOString().split("T")[0])}
@@ -623,6 +645,14 @@ export default function HRMSCalendarView({
         isDestructive={true}
         isPending={isPending}
         onConfirm={handleConfirmDeleteEvent}
+      />
+
+      {/* Bulk Import Calendar Events Wizard */}
+      <BulkImportWizard
+        open={isImportOpen}
+        onOpenChange={setIsImportOpen}
+        moduleKey="calendar"
+        onSuccess={() => window.location.reload()}
       />
     </div>
   );

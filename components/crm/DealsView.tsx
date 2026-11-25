@@ -28,6 +28,7 @@ import {
   Filter,
   RotateCcw,
   Calendar,
+  UploadCloud,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -37,6 +38,8 @@ import { toast } from "sonner";
 import DealFormModal from "@/components/crm/DealFormModal";
 import DealDetailModal from "@/components/crm/DealDetailModal";
 import ConfirmationModal from "@/components/ui/confirmation-modal";
+import BulkImportWizard from "@/components/shared/BulkImportWizard";
+import BulkExportMenu from "@/components/shared/BulkExportMenu";
 import {
   SerializedDeal,
   DealFormData,
@@ -91,6 +94,8 @@ export default function DealsView({
   // Modal states
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [selectedDeal, setSelectedDeal] = useState<SerializedDeal | null>(null);
+  const [selectedDealIds, setSelectedDealIds] = useState<string[]>([]);
+  const [isImportOpen, setIsImportOpen] = useState(false);
   const [viewDeal, setViewDeal] = useState<SerializedDeal | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -707,7 +712,7 @@ export default function DealsView({
       )}
 
       {/* 3. DYNAMIC FILTER & ACTION TOOLBAR */}
-      <div className="p-4 rounded-2xl bg-white/70 backdrop-blur-md border border-slate-200/80 shadow-xs space-y-3">
+      <div className="relative z-20 p-4 rounded-2xl bg-white border border-slate-200/80 shadow-xs space-y-3">
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
           <div className="relative">
             <Search className="absolute left-3 top-2.5 h-4 w-4 text-slate-400" />
@@ -804,7 +809,38 @@ export default function DealsView({
             )}
           </div>
 
-          <div className="flex items-center justify-end">
+          <div className="flex items-center justify-end gap-2">
+            {selectedDealIds.length > 0 && (
+              <div className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-orange-50 border border-orange-200 text-xs text-[#F0944D] font-semibold">
+                <span>{selectedDealIds.length} selected</span>
+                <button
+                  type="button"
+                  onClick={() => setSelectedDealIds([])}
+                  className="text-[10px] underline hover:text-orange-700 ml-1 cursor-pointer"
+                >
+                  Clear
+                </button>
+              </div>
+            )}
+
+            <BulkExportMenu
+              moduleKey="deals"
+              selectedIds={selectedDealIds}
+              totalCount={filteredDeals.length}
+              searchQuery={search}
+            />
+
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => setIsImportOpen(true)}
+              className="h-8 text-xs gap-1.5 text-slate-700 border-slate-200/80 shadow-2xs font-medium"
+            >
+              <UploadCloud className="h-3.5 w-3.5 text-[#F0944D]" />
+              Import Deals
+            </Button>
+
             <Button
               onClick={() => {
                 setSelectedDeal(null);
@@ -825,6 +861,20 @@ export default function DealsView({
           <table className="w-full text-left text-xs text-slate-600">
             <thead className="bg-slate-50/80 border-b border-slate-200 text-[11px] uppercase tracking-wider font-semibold text-slate-700">
               <tr>
+                <th className="py-3 px-3 w-10 text-center">
+                  <input
+                    type="checkbox"
+                    checked={filteredDeals.length > 0 && selectedDealIds.length === filteredDeals.length}
+                    onChange={() => {
+                      if (selectedDealIds.length === filteredDeals.length) {
+                        setSelectedDealIds([]);
+                      } else {
+                        setSelectedDealIds(filteredDeals.map((d) => d.id));
+                      }
+                    }}
+                    className="rounded border-slate-300 text-[#F0944D] focus:ring-[#F0944D] cursor-pointer"
+                  />
+                </th>
                 <th className="px-4 py-3.5">Deal Number</th>
                 <th className="px-4 py-3.5">Client & Company</th>
                 <th className="px-4 py-3.5">BDM & Partner</th>
@@ -838,7 +888,7 @@ export default function DealsView({
             <tbody className="divide-y divide-slate-100">
               {filteredDeals.length === 0 ? (
                 <tr>
-                  <td colSpan={8} className="px-4 py-12 text-center text-slate-400">
+                  <td colSpan={9} className="px-4 py-12 text-center text-slate-400">
                     <Briefcase className="h-8 w-8 mx-auto mb-2 text-slate-300" />
                     <p className="font-medium text-slate-600">No deals found</p>
                     <p className="text-[11px] text-slate-400 mt-0.5">
@@ -855,6 +905,20 @@ export default function DealsView({
 
                   return (
                     <tr key={d.id} className="hover:bg-slate-50/70 transition-colors group">
+                      <td className="py-3 px-3 text-center">
+                        <input
+                          type="checkbox"
+                          checked={selectedDealIds.includes(d.id)}
+                          onChange={() =>
+                            setSelectedDealIds((prev) =>
+                              prev.includes(d.id)
+                                ? prev.filter((id) => id !== d.id)
+                                : [...prev, d.id]
+                            )
+                          }
+                          className="rounded border-slate-300 text-[#F0944D] focus:ring-[#F0944D] cursor-pointer"
+                        />
+                      </td>
                       {/* Deal Number & Date */}
                       <td className="px-4 py-3.5 font-medium text-slate-900">
                         <div className="flex flex-col">
@@ -1128,6 +1192,14 @@ export default function DealsView({
         isDestructive={true}
         onConfirm={handleDeleteConfirm}
         isPending={isDeleting}
+      />
+
+      {/* Bulk Import Wizard Modal */}
+      <BulkImportWizard
+        open={isImportOpen}
+        onOpenChange={setIsImportOpen}
+        moduleKey="deals"
+        onSuccess={() => window.location.reload()}
       />
     </div>
   );

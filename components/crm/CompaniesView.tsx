@@ -22,7 +22,8 @@ import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
 import CompanyFormModal from "@/components/crm/CompanyFormModal";
 import CompanyDetailModal from "@/components/crm/CompanyDetailModal";
-import BulkUploadModal, { BulkUploadColumnDef } from "@/components/crm/BulkUploadModal";
+import BulkImportWizard from "@/components/shared/BulkImportWizard";
+import BulkExportMenu from "@/components/shared/BulkExportMenu";
 import ConfirmationModal from "@/components/ui/confirmation-modal";
 import {
   SerializedCompany,
@@ -37,49 +38,6 @@ interface CompaniesViewProps {
   initialCompanies: SerializedCompany[];
   canManageAll: boolean;
 }
-
-const BULK_COLUMNS: BulkUploadColumnDef[] = [
-  { key: "name", header: "Company Name", aliases: ["company", "account"], required: true },
-  { key: "companyType", header: "Company Type", aliases: ["type", "entity type"] },
-  { key: "incorporatedDate", header: "Incorporation Date", aliases: ["inc date", "date"] },
-  { key: "industry", header: "Industry", aliases: ["domain", "sector"] },
-  { key: "website", header: "Website", aliases: ["url", "web"] },
-  { key: "gstNumber", header: "GSTIN", aliases: ["gst", "tax id"] },
-  { key: "panNumber", header: "PAN", aliases: ["pan"] },
-  { key: "address", header: "Address", aliases: ["street", "location"] },
-  { key: "city", header: "City", aliases: ["town"] },
-  { key: "state", header: "State", aliases: ["province"] },
-  { key: "country", header: "Country", aliases: ["nation"] },
-];
-
-const SAMPLE_DATA: Record<string, string | number>[] = [
-  {
-    name: "Acme Infotech Solutions Pvt Ltd",
-    companyType: "Private Limited Company",
-    incorporatedDate: "2021-04-15",
-    industry: "Information Technology & SaaS",
-    website: "https://acmeinfotech.com",
-    gstNumber: "24AAACC1234D1Z5",
-    panNumber: "AAACC1234D",
-    address: "Tower B, Infocity Complex",
-    city: "Gandhinagar",
-    state: "Gujarat",
-    country: "India",
-  },
-  {
-    name: "Apex Logistics & Trade LLP",
-    companyType: "Limited Liability Partnership (LLP)",
-    incorporatedDate: "2023-01-10",
-    industry: "Logistics & Supply Chain",
-    website: "https://apexlogistics.in",
-    gstNumber: "27AABCA5678E1Z9",
-    panNumber: "AABCA5678E",
-    address: "Industrial Area Phase 2",
-    city: "Mumbai",
-    state: "Maharashtra",
-    country: "India",
-  },
-];
 
 export default function CompaniesView({
   initialCompanies,
@@ -96,6 +54,7 @@ export default function CompaniesView({
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const [isBulkOpen, setIsBulkOpen] = useState(false);
+  const [selectedCompanyIds, setSelectedCompanyIds] = useState<string[]>([]);
 
   const [deletingCompany, setDeletingCompany] = useState<SerializedCompany | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
@@ -233,7 +192,7 @@ export default function CompaniesView({
       </div>
 
       {/* Filter and Action Bar */}
-      <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 p-3.5 rounded-2xl bg-white/80 backdrop-blur-md border border-slate-200/80 shadow-2xs">
+      <div className="relative z-20 flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 p-3.5 rounded-2xl bg-white border border-slate-200/80 shadow-2xs">
         <div className="flex flex-1 items-center gap-2.5">
           <div className="relative flex-1 max-w-sm">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-400" />
@@ -261,15 +220,35 @@ export default function CompaniesView({
         </div>
 
         <div className="flex items-center gap-2 shrink-0">
+          {selectedCompanyIds.length > 0 && (
+            <div className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-orange-50 border border-orange-200 text-xs text-[#F0944D] font-semibold">
+              <span>{selectedCompanyIds.length} selected</span>
+              <button
+                type="button"
+                onClick={() => setSelectedCompanyIds([])}
+                className="text-[10px] underline hover:text-orange-700 ml-1 cursor-pointer"
+              >
+                Clear
+              </button>
+            </div>
+          )}
+
+          <BulkExportMenu
+            moduleKey="companies"
+            selectedIds={selectedCompanyIds}
+            totalCount={filteredCompanies.length}
+            searchQuery={search}
+          />
+
           <Button
             type="button"
             variant="outline"
             size="sm"
             onClick={() => setIsBulkOpen(true)}
-            className="rounded-full text-xs gap-1.5 h-9 border-slate-200 text-slate-700 hover:text-slate-900 shadow-2xs"
+            className="rounded-full text-xs gap-1.5 h-9 border-slate-200 text-slate-700 hover:text-slate-900 shadow-2xs font-medium"
           >
             <UploadCloud className="h-3.5 w-3.5 text-[#F0944D]" />
-            Bulk Upload CSV
+            Import Companies
           </Button>
 
           <Button
@@ -290,6 +269,20 @@ export default function CompaniesView({
           <table className="w-full text-left text-xs">
             <thead className="bg-slate-50/70 border-b border-slate-200/80 text-slate-500 font-semibold uppercase tracking-wider text-[10px]">
               <tr>
+                <th className="py-3 px-3 w-10 text-center">
+                  <input
+                    type="checkbox"
+                    checked={filteredCompanies.length > 0 && selectedCompanyIds.length === filteredCompanies.length}
+                    onChange={() => {
+                      if (selectedCompanyIds.length === filteredCompanies.length) {
+                        setSelectedCompanyIds([]);
+                      } else {
+                        setSelectedCompanyIds(filteredCompanies.map((c) => c.id));
+                      }
+                    }}
+                    className="rounded border-slate-300 text-[#F0944D] focus:ring-[#F0944D] cursor-pointer"
+                  />
+                </th>
                 <th className="py-3 px-4">Company Profile</th>
                 <th className="py-3 px-4">Type & Industry</th>
                 <th className="py-3 px-4">Statutory Identifiers</th>
@@ -302,19 +295,33 @@ export default function CompaniesView({
             <tbody className="divide-y divide-slate-100 text-slate-700">
               {filteredCompanies.length === 0 ? (
                 <tr>
-                  <td colSpan={7} className="py-12 text-center text-slate-400">
+                  <td colSpan={8} className="py-12 text-center text-slate-400">
                     <Building2 className="h-8 w-8 mx-auto text-slate-300 mb-2" />
                     <p className="font-semibold text-slate-600">No companies found</p>
                     <p className="text-[11px] mt-0.5">
                       {search
                         ? "Try adjusting your search criteria"
-                        : "Click 'Register Company' or 'Bulk Upload CSV' to create accounts."}
+                        : "Click 'Register Company' or 'Import Companies' to create accounts."}
                     </p>
                   </td>
                 </tr>
               ) : (
                 filteredCompanies.map((comp) => (
                   <tr key={comp.id} className="hover:bg-slate-50/60 transition-colors group">
+                    <td className="py-3 px-3 text-center">
+                      <input
+                        type="checkbox"
+                        checked={selectedCompanyIds.includes(comp.id)}
+                        onChange={() =>
+                          setSelectedCompanyIds((prev) =>
+                            prev.includes(comp.id)
+                              ? prev.filter((id) => id !== comp.id)
+                              : [...prev, comp.id]
+                          )
+                        }
+                        className="rounded border-slate-300 text-[#F0944D] focus:ring-[#F0944D] cursor-pointer"
+                      />
+                    </td>
                     {/* Name & Website */}
                     <td className="py-3 px-4">
                       <div className="font-bold text-slate-900 group-hover:text-[#F0944D] transition-colors">
@@ -451,17 +458,12 @@ export default function CompaniesView({
         isSubmitting={isSubmitting}
       />
 
-      {/* Bulk Upload Modal */}
-      <BulkUploadModal<CompanyFormData>
+      {/* Bulk Import Wizard Modal */}
+      <BulkImportWizard
         open={isBulkOpen}
         onOpenChange={setIsBulkOpen}
-        title="Bulk Upload Companies"
-        description="Batch register corporate entities with incorporation dates, statutory tax IDs, and addresses."
-        sampleFileName="bharatedge_companies_template.csv"
-        columns={BULK_COLUMNS}
-        sampleData={SAMPLE_DATA}
-        schema={companySchema}
-        onUpload={handleBulkUpload}
+        moduleKey="companies"
+        onSuccess={() => window.location.reload()}
       />
 
       {/* Confirmation Delete Modal */}

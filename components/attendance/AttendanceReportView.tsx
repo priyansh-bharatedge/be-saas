@@ -12,10 +12,13 @@ import {
   UserX,
   Layers,
   Eye,
+  UploadCloud,
 } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import AttendanceDetailModal from "@/components/attendance/AttendanceDetailModal";
+import BulkImportWizard from "@/components/shared/BulkImportWizard";
+import BulkExportMenu from "@/components/shared/BulkExportMenu";
 import {
   AttendanceRecordRow,
   getAttendanceReportAction,
@@ -66,6 +69,8 @@ export default function AttendanceReportView({
 
   // Pagination
   const [currentPage, setCurrentPage] = useState(1);
+  const [selectedRecordIds, setSelectedRecordIds] = useState<string[]>([]);
+  const [isImportOpen, setIsImportOpen] = useState(false);
   const [viewRecord, setViewRecord] = useState<AttendanceRecordRow | null>(null);
   const pageSize = 10;
   const [isPending, startTransition] = useTransition();
@@ -324,7 +329,7 @@ export default function AttendanceReportView({
       {/* 2. Main Light Glassmorphic Container matching Reference Aesthetic */}
       <div className="rounded-[36px] bg-white/70 backdrop-blur-2xl border border-white/80 shadow-[0_12px_40px_rgba(0,0,0,0.03)] p-6 sm:p-8">
         {/* Top Controls: Department Filter Pills & Export Report Button */}
-        <div className="flex flex-col xl:flex-row xl:items-center justify-between gap-4 mb-6 pb-4 border-b border-slate-100/80">
+        <div className="relative z-20 flex flex-col xl:flex-row xl:items-center justify-between gap-4 mb-6 pb-4 border-b border-slate-100/80">
           {/* Department Pills or Self-Service Header */}
           {!isSelfService ? (
             <div className="flex items-center gap-2 overflow-x-auto pb-1 scrollbar-none">
@@ -355,15 +360,42 @@ export default function AttendanceReportView({
             </div>
           )}
 
-          {/* Export Report Button: Styled with BharatEdge Brand Accent (#588594) */}
-          <Button
-            onClick={handleExportCSV}
-            disabled={isExporting}
-            className="bg-gradient-to-r from-[#588594] to-[#4A7280] hover:from-[#4A7280] hover:to-[#3D606C] text-white font-semibold text-xs px-5 py-2.5 rounded-full shadow-sm flex items-center gap-2 self-start xl:self-auto shrink-0 transition-transform active:scale-95 cursor-pointer"
-          >
-            <Download className="h-3.5 w-3.5" />
-            {isExporting ? "Generating CSV..." : "Export Report (CSV)"}
-          </Button>
+          {/* Export & Import Action Buttons */}
+          <div className="flex items-center gap-2">
+            {selectedRecordIds.length > 0 && (
+              <div className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-orange-50 border border-orange-200 text-xs text-[#F0944D] font-semibold">
+                <span>{selectedRecordIds.length} selected</span>
+                <button
+                  type="button"
+                  onClick={() => setSelectedRecordIds([])}
+                  className="text-[10px] underline hover:text-orange-700 ml-1 cursor-pointer"
+                >
+                  Clear
+                </button>
+              </div>
+            )}
+
+            <BulkExportMenu
+              moduleKey="attendance"
+              selectedIds={selectedRecordIds}
+              totalCount={total}
+              searchQuery={search}
+              filters={{ startDate, endDate }}
+            />
+
+            {!isSelfService && (
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => setIsImportOpen(true)}
+                className="rounded-full text-xs gap-1.5 h-9 border-slate-200 text-slate-700 bg-white/90 hover:bg-white shadow-2xs font-medium cursor-pointer"
+              >
+                <UploadCloud className="h-3.5 w-3.5 text-[#F0944D]" />
+                Import Logs
+              </Button>
+            )}
+          </div>
         </div>
 
         {/* Second Row: Search, Date Range Presets, Status Dropdown, Custom Date Picker */}
@@ -449,9 +481,23 @@ export default function AttendanceReportView({
             {/* Table Header: shaded row matching reference aesthetic */}
             <thead>
               <tr className="bg-[#E7EAEF]/60 rounded-xl text-[11px] font-semibold text-slate-500 uppercase tracking-wider">
+                <th className="py-3.5 px-3 w-10 text-center rounded-l-xl">
+                  <input
+                    type="checkbox"
+                    checked={records.length > 0 && selectedRecordIds.length === records.length}
+                    onChange={() => {
+                      if (selectedRecordIds.length === records.length) {
+                        setSelectedRecordIds([]);
+                      } else {
+                        setSelectedRecordIds(records.map((r) => r.id));
+                      }
+                    }}
+                    className="rounded border-slate-300 text-[#F0944D] focus:ring-[#F0944D] cursor-pointer"
+                  />
+                </th>
                 {isSelfService ? (
                   <>
-                    <th className="py-3.5 pl-4 pr-3 rounded-l-xl">Date</th>
+                    <th className="py-3.5 px-3">Date</th>
                     <th className="py-3.5 px-3">Clock-In Time</th>
                     <th className="py-3.5 px-3">Clock-Out Time</th>
                     <th className="py-3.5 px-3">Total Working Hours</th>
@@ -460,7 +506,7 @@ export default function AttendanceReportView({
                   </>
                 ) : (
                   <>
-                    <th className="py-3.5 pl-4 pr-3 rounded-l-xl">Employee ID</th>
+                    <th className="py-3.5 px-3">Employee ID</th>
                     <th className="py-3.5 px-3">Staff Name</th>
                     <th className="py-3.5 px-3">Department & Role</th>
                     <th className="py-3.5 px-3">Clock-In Time</th>
@@ -477,7 +523,7 @@ export default function AttendanceReportView({
             <tbody className="divide-y divide-[#EAEFF4]/70">
               {records.length === 0 ? (
                 <tr>
-                  <td colSpan={isSelfService ? 6 : 8} className="py-12 text-center text-sm text-slate-400">
+                  <td colSpan={isSelfService ? 7 : 9} className="py-12 text-center text-sm text-slate-400">
                     {isPending ? "Filtering records..." : "No attendance logs found for this filter criteria."}
                   </td>
                 </tr>
@@ -490,6 +536,20 @@ export default function AttendanceReportView({
                       key={r.id}
                       className="hover:bg-white/50 transition-colors text-xs text-slate-800"
                     >
+                      <td className="py-4 px-3 text-center">
+                        <input
+                          type="checkbox"
+                          checked={selectedRecordIds.includes(r.id)}
+                          onChange={() =>
+                            setSelectedRecordIds((prev) =>
+                              prev.includes(r.id)
+                                ? prev.filter((id) => id !== r.id)
+                                : [...prev, r.id]
+                            )
+                          }
+                          className="rounded border-slate-300 text-[#F0944D] focus:ring-[#F0944D] cursor-pointer"
+                        />
+                      </td>
                       {isSelfService ? (
                         /* Date for Self Service */
                         <td className="py-4 pl-4 pr-3 font-medium text-slate-900">
@@ -666,6 +726,14 @@ export default function AttendanceReportView({
         open={Boolean(viewRecord)}
         onOpenChange={(open) => !open && setViewRecord(null)}
         record={viewRecord}
+      />
+
+      {/* Bulk Import Attendance Logs */}
+      <BulkImportWizard
+        open={isImportOpen}
+        onOpenChange={setIsImportOpen}
+        moduleKey="attendance"
+        onSuccess={() => window.location.reload()}
       />
     </div>
   );

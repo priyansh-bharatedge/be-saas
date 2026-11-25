@@ -22,7 +22,8 @@ import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
 import ClientFormModal from "@/components/crm/ClientFormModal";
 import ClientDetailModal from "@/components/crm/ClientDetailModal";
-import BulkUploadModal, { BulkUploadColumnDef } from "@/components/crm/BulkUploadModal";
+import BulkImportWizard from "@/components/shared/BulkImportWizard";
+import BulkExportMenu from "@/components/shared/BulkExportMenu";
 import ConfirmationModal from "@/components/ui/confirmation-modal";
 import {
   SerializedClient,
@@ -39,52 +40,6 @@ interface ClientsViewProps {
   employees: { id: string; name: string; department: string }[];
   canManageAll: boolean;
 }
-
-const BULK_COLUMNS: BulkUploadColumnDef[] = [
-  { key: "name", header: "Client Name", aliases: ["client", "full name"], required: true },
-  { key: "phone", header: "Phone Number", aliases: ["mobile", "contact"], required: true },
-  { key: "email", header: "Email Address", aliases: ["email", "mail"] },
-  { key: "alternatePhone", header: "Alternate Phone", aliases: ["alt phone", "whatsapp"] },
-  { key: "gender", header: "Gender", aliases: ["sex"] },
-  { key: "companyName", header: "Company Name", aliases: ["company", "organization"] },
-  { key: "city", header: "City", aliases: ["town"] },
-  { key: "state", header: "State", aliases: ["province"] },
-  { key: "country", header: "Country", aliases: ["nation"] },
-  { key: "gstNumber", header: "GSTIN", aliases: ["gst"] },
-  { key: "panNumber", header: "PAN", aliases: ["pan"] },
-  { key: "address", header: "Address", aliases: ["street"] },
-];
-
-const SAMPLE_DATA: Record<string, string | number>[] = [
-  {
-    name: "Rohan Varma",
-    phone: "9876543210",
-    alternatePhone: "9876543211",
-    email: "rohan.varma@acme.com",
-    gender: "Male",
-    companyName: "Acme Infotech Solutions Pvt Ltd",
-    city: "Ahmedabad",
-    state: "Gujarat",
-    country: "India",
-    gstNumber: "24AAACC1234D1Z5",
-    panNumber: "AAACC1234D",
-    address: "B-402 Shivalik Business Park",
-  },
-  {
-    name: "Ananya Deshmukh",
-    phone: "9123456780",
-    alternatePhone: "",
-    email: "ananya.d@fintech.co",
-    gender: "Female",
-    companyName: "Apex Logistics & Trade LLP",
-    city: "Mumbai",
-    state: "Maharashtra",
-    country: "India",
-    gstNumber: "27AABCA5678E1Z9",
-    panNumber: "AABCA5678E",
-    address: "Tower 1, Bandra Kurla Complex",
-  },
-];
 
 export default function ClientsView({
   initialClients,
@@ -103,6 +58,7 @@ export default function ClientsView({
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const [isBulkOpen, setIsBulkOpen] = useState(false);
+  const [selectedClientIds, setSelectedClientIds] = useState<string[]>([]);
 
   const [deletingClient, setDeletingClient] = useState<SerializedClient | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
@@ -244,7 +200,7 @@ export default function ClientsView({
       </div>
 
       {/* Filter and Action Bar */}
-      <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 p-3.5 rounded-2xl bg-white/80 backdrop-blur-md border border-slate-200/80 shadow-2xs">
+      <div className="relative z-20 flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 p-3.5 rounded-2xl bg-white border border-slate-200/80 shadow-2xs">
         <div className="flex flex-1 items-center gap-2.5">
           <div className="relative flex-1 max-w-sm">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-400" />
@@ -273,15 +229,35 @@ export default function ClientsView({
         </div>
 
         <div className="flex items-center gap-2 shrink-0">
+          {selectedClientIds.length > 0 && (
+            <div className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-orange-50 border border-orange-200 text-xs text-[#F0944D] font-semibold">
+              <span>{selectedClientIds.length} selected</span>
+              <button
+                type="button"
+                onClick={() => setSelectedClientIds([])}
+                className="text-[10px] underline hover:text-orange-700 ml-1 cursor-pointer"
+              >
+                Clear
+              </button>
+            </div>
+          )}
+
+          <BulkExportMenu
+            moduleKey="clients"
+            selectedIds={selectedClientIds}
+            totalCount={filteredClients.length}
+            searchQuery={search}
+          />
+
           <Button
             type="button"
             variant="outline"
             size="sm"
             onClick={() => setIsBulkOpen(true)}
-            className="rounded-full text-xs gap-1.5 h-9 border-slate-200 text-slate-700 hover:text-slate-900 shadow-2xs"
+            className="rounded-full text-xs gap-1.5 h-9 border-slate-200 text-slate-700 hover:text-slate-900 shadow-2xs font-medium"
           >
             <UploadCloud className="h-3.5 w-3.5 text-[#F0944D]" />
-            Bulk Upload CSV
+            Import Clients
           </Button>
 
           <Button
@@ -302,6 +278,20 @@ export default function ClientsView({
           <table className="w-full text-left text-xs">
             <thead className="bg-slate-50/70 border-b border-slate-200/80 text-slate-500 font-semibold uppercase tracking-wider text-[10px]">
               <tr>
+                <th className="py-3 px-3 w-10 text-center">
+                  <input
+                    type="checkbox"
+                    checked={filteredClients.length > 0 && selectedClientIds.length === filteredClients.length}
+                    onChange={() => {
+                      if (selectedClientIds.length === filteredClients.length) {
+                        setSelectedClientIds([]);
+                      } else {
+                        setSelectedClientIds(filteredClients.map((c) => c.id));
+                      }
+                    }}
+                    className="rounded border-slate-300 text-[#F0944D] focus:ring-[#F0944D] cursor-pointer"
+                  />
+                </th>
                 <th className="py-3 px-4">Client Identifier</th>
                 <th className="py-3 px-4">Contact Info (Phone / Email)</th>
                 <th className="py-3 px-4">Company Affiliation</th>
@@ -314,19 +304,33 @@ export default function ClientsView({
             <tbody className="divide-y divide-slate-100 text-slate-700">
               {filteredClients.length === 0 ? (
                 <tr>
-                  <td colSpan={7} className="py-12 text-center text-slate-400">
+                  <td colSpan={8} className="py-12 text-center text-slate-400">
                     <Users className="h-8 w-8 mx-auto text-slate-300 mb-2" />
                     <p className="font-semibold text-slate-600">No clients found</p>
                     <p className="text-[11px] mt-0.5">
                       {search
                         ? "Try searching another phone number or email"
-                        : "Click 'New Client' or 'Bulk Upload CSV' to register accounts."}
+                        : "Click 'New Client' or 'Import Clients' to register accounts."}
                     </p>
                   </td>
                 </tr>
               ) : (
                 filteredClients.map((client) => (
                   <tr key={client.id} className="hover:bg-slate-50/60 transition-colors group">
+                    <td className="py-3 px-3 text-center">
+                      <input
+                        type="checkbox"
+                        checked={selectedClientIds.includes(client.id)}
+                        onChange={() =>
+                          setSelectedClientIds((prev) =>
+                            prev.includes(client.id)
+                              ? prev.filter((id) => id !== client.id)
+                              : [...prev, client.id]
+                          )
+                        }
+                        className="rounded border-slate-300 text-[#F0944D] focus:ring-[#F0944D] cursor-pointer"
+                      />
+                    </td>
                     {/* Identifier */}
                     <td className="py-3 px-4">
                       <div className="font-bold text-slate-900 group-hover:text-[#F0944D] transition-colors flex items-center gap-1.5">
@@ -457,17 +461,12 @@ export default function ClientsView({
         isSubmitting={isSubmitting}
       />
 
-      {/* Bulk Upload Modal */}
-      <BulkUploadModal<ClientFormData>
+      {/* Bulk Import Wizard Modal */}
+      <BulkImportWizard
         open={isBulkOpen}
         onOpenChange={setIsBulkOpen}
-        title="Bulk Upload Clients"
-        description="Batch register client contacts with unique phone indexing, email, and corporate company linkage."
-        sampleFileName="bharatedge_clients_template.csv"
-        columns={BULK_COLUMNS}
-        sampleData={SAMPLE_DATA}
-        schema={clientSchema}
-        onUpload={handleBulkUpload}
+        moduleKey="clients"
+        onSuccess={() => window.location.reload()}
       />
 
       {/* Confirmation Delete Modal */}

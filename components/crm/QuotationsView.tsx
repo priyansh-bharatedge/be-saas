@@ -21,6 +21,7 @@ import {
   TrendingUp,
   ExternalLink,
   Loader2,
+  UploadCloud,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -30,6 +31,8 @@ import { toast } from "sonner";
 import QuotationFormModal from "@/components/crm/QuotationFormModal";
 import QuotationDetailModal from "@/components/crm/QuotationDetailModal";
 import ConfirmationModal from "@/components/ui/confirmation-modal";
+import BulkImportWizard from "@/components/shared/BulkImportWizard";
+import BulkExportMenu from "@/components/shared/BulkExportMenu";
 import { openDocumentPreview } from "@/components/modals/DocumentPreviewModal";
 import {
   SerializedQuotation,
@@ -58,6 +61,8 @@ export default function QuotationsView({
   const [quotations, setQuotations] = useState<SerializedQuotation[]>(initialQuotations);
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("ALL");
+  const [selectedQuotationIds, setSelectedQuotationIds] = useState<string[]>([]);
+  const [isImportOpen, setIsImportOpen] = useState(false);
 
   // Modal states
   const [isFormOpen, setIsFormOpen] = useState(false);
@@ -283,7 +288,7 @@ export default function QuotationsView({
       </div>
 
       {/* 2. FILTER & ACTION TOOLBAR */}
-      <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 p-4 rounded-2xl bg-white/70 backdrop-blur-md border border-slate-200/80 shadow-xs">
+      <div className="relative z-20 flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 p-4 rounded-2xl bg-white border border-slate-200/80 shadow-xs">
         <div className="flex flex-1 items-center gap-3">
           <div className="relative flex-1 max-w-md">
             <Search className="absolute left-3 top-2.5 h-4 w-4 text-slate-400" />
@@ -310,6 +315,37 @@ export default function QuotationsView({
         </div>
 
         <div className="flex items-center gap-2">
+          {selectedQuotationIds.length > 0 && (
+            <div className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-orange-50 border border-orange-200 text-xs text-[#F0944D] font-semibold">
+              <span>{selectedQuotationIds.length} selected</span>
+              <button
+                type="button"
+                onClick={() => setSelectedQuotationIds([])}
+                className="text-[10px] underline hover:text-orange-700 ml-1 cursor-pointer"
+              >
+                Clear
+              </button>
+            </div>
+          )}
+
+          <BulkExportMenu
+            moduleKey="quotations"
+            selectedIds={selectedQuotationIds}
+            totalCount={filteredQuotations.length}
+            searchQuery={search}
+          />
+
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={() => setIsImportOpen(true)}
+            className="rounded-full text-xs gap-1.5 h-9 border-slate-200 text-slate-700 hover:text-slate-900 shadow-2xs font-medium"
+          >
+            <UploadCloud className="h-3.5 w-3.5 text-[#F0944D]" />
+            Import Quotes
+          </Button>
+
           <Button
             onClick={() => {
               setSelectedQuotation(null);
@@ -329,6 +365,20 @@ export default function QuotationsView({
           <table className="w-full text-left text-xs text-slate-600">
             <thead className="bg-slate-50/80 border-b border-slate-200 text-[11px] uppercase tracking-wider font-semibold text-slate-700">
               <tr>
+                <th className="py-3 px-3 w-10 text-center">
+                  <input
+                    type="checkbox"
+                    checked={filteredQuotations.length > 0 && selectedQuotationIds.length === filteredQuotations.length}
+                    onChange={() => {
+                      if (selectedQuotationIds.length === filteredQuotations.length) {
+                        setSelectedQuotationIds([]);
+                      } else {
+                        setSelectedQuotationIds(filteredQuotations.map((q) => q.id));
+                      }
+                    }}
+                    className="rounded border-slate-300 text-[#F0944D] focus:ring-[#F0944D] cursor-pointer"
+                  />
+                </th>
                 <th className="px-4 py-3.5">Quotation Ref</th>
                 <th className="px-4 py-3.5">Client & Contact</th>
                 <th className="px-4 py-3.5">Company / Entity</th>
@@ -342,7 +392,7 @@ export default function QuotationsView({
             <tbody className="divide-y divide-slate-100">
               {filteredQuotations.length === 0 ? (
                 <tr>
-                  <td colSpan={8} className="px-4 py-12 text-center text-slate-400">
+                  <td colSpan={9} className="px-4 py-12 text-center text-slate-400">
                     <FileText className="h-8 w-8 mx-auto mb-2 text-slate-300" />
                     <p className="font-medium text-slate-600">No quotations found</p>
                     <p className="text-[11px] text-slate-400 mt-0.5">
@@ -356,6 +406,20 @@ export default function QuotationsView({
                     key={q.id}
                     className="hover:bg-slate-50/70 transition-colors group"
                   >
+                    <td className="py-3 px-3 text-center">
+                      <input
+                        type="checkbox"
+                        checked={selectedQuotationIds.includes(q.id)}
+                        onChange={() =>
+                          setSelectedQuotationIds((prev) =>
+                            prev.includes(q.id)
+                              ? prev.filter((id) => id !== q.id)
+                              : [...prev, q.id]
+                          )
+                        }
+                        className="rounded border-slate-300 text-[#F0944D] focus:ring-[#F0944D] cursor-pointer"
+                      />
+                    </td>
                     {/* Ref Number & Date */}
                     <td className="px-4 py-3.5 font-medium text-slate-900">
                       <div className="flex flex-col">
@@ -561,6 +625,14 @@ export default function QuotationsView({
         isDestructive={true}
         onConfirm={handleDeleteConfirm}
         isPending={isDeleting}
+      />
+
+      {/* Bulk Import Wizard */}
+      <BulkImportWizard
+        open={isImportOpen}
+        onOpenChange={setIsImportOpen}
+        moduleKey="quotations"
+        onSuccess={() => window.location.reload()}
       />
     </div>
   );

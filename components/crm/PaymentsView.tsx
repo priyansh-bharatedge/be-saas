@@ -32,7 +32,8 @@ import { toast } from "sonner";
 import PaymentRecordFormModal from "@/components/crm/PaymentRecordFormModal";
 import PaymentDetailModal from "@/components/crm/PaymentDetailModal";
 import AccountsPaymentVerifyModal from "@/components/crm/AccountsPaymentVerifyModal";
-import BulkUploadModal, { BulkUploadColumnDef } from "@/components/crm/BulkUploadModal";
+import BulkImportWizard from "@/components/shared/BulkImportWizard";
+import BulkExportMenu from "@/components/shared/BulkExportMenu";
 import { openDocumentPreview } from "@/components/modals/DocumentPreviewModal";
 import ConfirmationModal from "@/components/ui/confirmation-modal";
 import {
@@ -62,17 +63,6 @@ interface PaymentsViewProps {
   canManageAll: boolean;
 }
 
-const BULK_COLUMNS: BulkUploadColumnDef[] = [
-  { key: "clientId", header: "Client ID", aliases: ["client_id", "client id"], required: true },
-  { key: "amount", header: "Amount (₹)", aliases: ["amount", "received amount"], required: true, type: "number" },
-  { key: "bankType", header: "Bank Type (BSPL/BSAPL)", aliases: ["bank", "entity", "bank type"] },
-  { key: "paymentType", header: "Payment Type", aliases: ["type", "stage"] },
-  { key: "paymentMode", header: "Payment Mode", aliases: ["mode"] },
-  { key: "transactionRef", header: "Transaction Ref / UTR", aliases: ["utr", "ref", "cheque"] },
-  { key: "paymentDate", header: "Payment Date (YYYY-MM-DD)", aliases: ["date"] },
-  { key: "remarks", header: "Remarks", aliases: ["note", "notes"] },
-];
-
 export default function PaymentsView({
   initialPayments,
   masterData,
@@ -97,6 +87,7 @@ export default function PaymentsView({
   const [isDeleting, setIsDeleting] = useState(false);
 
   const [isBulkOpen, setIsBulkOpen] = useState(false);
+  const [selectedPaymentIds, setSelectedPaymentIds] = useState<string[]>([]);
 
   // Convert to deal loading
   const [convertingId, setConvertingId] = useState<string | null>(null);
@@ -421,7 +412,7 @@ export default function PaymentsView({
       </div>
 
       {/* 3. FILTER & ACTION TOOLBAR */}
-      <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 p-4 rounded-2xl bg-white/70 backdrop-blur-md border border-slate-200/80 shadow-xs">
+      <div className="relative z-20 flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 p-4 rounded-2xl bg-white border border-slate-200/80 shadow-xs">
         <div className="flex flex-1 items-center gap-3">
           <div className="relative flex-1 max-w-md">
             <Search className="absolute left-3 top-2.5 h-4 w-4 text-slate-400" />
@@ -445,13 +436,33 @@ export default function PaymentsView({
         </div>
 
         <div className="flex items-center gap-2">
+          {selectedPaymentIds.length > 0 && (
+            <div className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-orange-50 border border-orange-200 text-xs text-[#F0944D] font-semibold">
+              <span>{selectedPaymentIds.length} selected</span>
+              <button
+                type="button"
+                onClick={() => setSelectedPaymentIds([])}
+                className="text-[10px] underline hover:text-orange-700 ml-1 cursor-pointer"
+              >
+                Clear
+              </button>
+            </div>
+          )}
+
+          <BulkExportMenu
+            moduleKey="payments"
+            selectedIds={selectedPaymentIds}
+            totalCount={filteredPayments.length}
+            searchQuery={search}
+          />
+
           <Button
             variant="outline"
             onClick={() => setIsBulkOpen(true)}
-            className="h-9 text-xs gap-1.5 text-slate-700 border-slate-200/80 shadow-2xs"
+            className="h-9 text-xs gap-1.5 text-slate-700 border-slate-200/80 shadow-2xs font-medium"
           >
-            <UploadCloud className="h-3.5 w-3.5" />
-            Bulk Upload
+            <UploadCloud className="h-3.5 w-3.5 text-[#F0944D]" />
+            Import Payments
           </Button>
 
           <Button
@@ -470,6 +481,20 @@ export default function PaymentsView({
           <table className="w-full text-left text-xs text-slate-600">
             <thead className="bg-slate-50/80 border-b border-slate-200 text-[11px] uppercase tracking-wider font-semibold text-slate-700">
               <tr>
+                <th className="py-3 px-3 w-10 text-center">
+                  <input
+                    type="checkbox"
+                    checked={filteredPayments.length > 0 && selectedPaymentIds.length === filteredPayments.length}
+                    onChange={() => {
+                      if (selectedPaymentIds.length === filteredPayments.length) {
+                        setSelectedPaymentIds([]);
+                      } else {
+                        setSelectedPaymentIds(filteredPayments.map((p) => p.id));
+                      }
+                    }}
+                    className="rounded border-slate-300 text-[#F0944D] focus:ring-[#F0944D] cursor-pointer"
+                  />
+                </th>
                 <th className="px-4 py-3.5">Receipt #</th>
                 <th className="px-4 py-3.5">Client & Contact</th>
                 <th className="px-4 py-3.5">Amount</th>
@@ -484,7 +509,7 @@ export default function PaymentsView({
             <tbody className="divide-y divide-slate-100">
               {filteredPayments.length === 0 ? (
                 <tr>
-                  <td colSpan={9} className="px-4 py-12 text-center text-slate-400">
+                  <td colSpan={10} className="px-4 py-12 text-center text-slate-400">
                     <IndianRupee className="h-8 w-8 mx-auto mb-2 text-slate-300" />
                     <p className="font-medium text-slate-600">No payment receipts found</p>
                     <p className="text-[11px] text-slate-400 mt-0.5">
@@ -495,6 +520,20 @@ export default function PaymentsView({
               ) : (
                 filteredPayments.map((p) => (
                   <tr key={p.id} className="hover:bg-slate-50/70 transition-colors group">
+                    <td className="py-3 px-3 text-center">
+                      <input
+                        type="checkbox"
+                        checked={selectedPaymentIds.includes(p.id)}
+                        onChange={() =>
+                          setSelectedPaymentIds((prev) =>
+                            prev.includes(p.id)
+                              ? prev.filter((id) => id !== p.id)
+                              : [...prev, p.id]
+                          )
+                        }
+                        className="rounded border-slate-300 text-[#F0944D] focus:ring-[#F0944D] cursor-pointer"
+                      />
+                    </td>
                     {/* Receipt Ref & Date */}
                     <td className="px-4 py-3.5 font-medium text-slate-900">
                       <div className="flex flex-col">
@@ -704,28 +743,12 @@ export default function PaymentsView({
         isPending={isDeleting}
       />
 
-      <BulkUploadModal<any>
+      {/* Bulk Import Wizard Modal */}
+      <BulkImportWizard
         open={isBulkOpen}
         onOpenChange={setIsBulkOpen}
-        title="Bulk Upload Payment Records"
-        description="Upload CSV of historical or imported client payment receipts."
-        sampleFileName="bharatedge_payments_template.csv"
-        columns={BULK_COLUMNS}
-        schema={paymentRecordSchema as any}
-        sampleData={[
-          {
-            clientId: masterData.clients[0]?.id || "CL-UUID-EXAMPLE",
-            amount: 15000,
-            bankType: "BSPL",
-            paymentType: "FIRST_PAYMENT",
-            paymentMode: "BANK_TRANSFER",
-            transactionRef: "UTR9821827361",
-            paymentDate: "2026-11-20",
-            remarks: "Advance registration booking",
-          },
-        ]}
-        onUpload={bulkUploadPaymentsAction as any}
-        onSuccess={() => router.refresh()}
+        moduleKey="payments"
+        onSuccess={() => window.location.reload()}
       />
     </div>
   );

@@ -31,7 +31,8 @@ import {
 } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
-import BulkUploadModal, { BulkUploadColumnDef } from "@/components/crm/BulkUploadModal";
+import BulkImportWizard from "@/components/shared/BulkImportWizard";
+import BulkExportMenu from "@/components/shared/BulkExportMenu";
 import ConfirmationModal from "@/components/ui/confirmation-modal";
 import {
   SerializedProspectTab,
@@ -431,15 +432,6 @@ export default function ProspectsSpreadsheetView({
     );
   });
 
-  // Dynamic Bulk Upload Mapping based on Active Columns
-  const bulkColumns: BulkUploadColumnDef[] = columns.map((col) => ({
-    key: col.key,
-    header: col.name,
-    aliases: [col.name.toLowerCase(), col.key],
-  }));
-
-  const dynamicSchema = z.record(z.string(), z.any());
-
   return (
     <div className="space-y-4">
       {/* 1. TOP-LEVEL TABS (TL-WISE HIERARCHY) */}
@@ -595,7 +587,7 @@ export default function ProspectsSpreadsheetView({
       )}
 
       {/* 3. SPREADSHEET TOOLBAR */}
-      <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 p-3 rounded-2xl bg-white/80 backdrop-blur-md border border-slate-200/80 shadow-2xs">
+      <div className="relative z-20 flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 p-3 rounded-2xl bg-white border border-slate-200/80 shadow-2xs">
         <div className="flex flex-1 items-center gap-2">
           <div className="relative flex-1 max-w-xs">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-400" />
@@ -627,15 +619,22 @@ export default function ProspectsSpreadsheetView({
             </Button>
           )}
 
+          <BulkExportMenu
+            moduleKey="prospects"
+            totalCount={rows.length}
+            filters={{ sheetId: activeSheet?.id }}
+            searchQuery={search}
+          />
+
           <Button
             type="button"
             variant="outline"
             size="sm"
             onClick={() => setIsBulkOpen(true)}
-            className="rounded-full text-xs gap-1.5 h-8 border-slate-200 text-slate-700 hover:text-slate-900 shadow-2xs"
+            className="rounded-full text-xs gap-1.5 h-8 border-slate-200 text-slate-700 hover:text-slate-900 shadow-2xs font-medium"
           >
             <UploadCloud className="h-3.5 w-3.5 text-[#F0944D]" />
-            Bulk Import CSV
+            Import Prospects
           </Button>
 
           <Button
@@ -1135,29 +1134,12 @@ export default function ProspectsSpreadsheetView({
         </DialogContent>
       </Dialog>
 
-      {/* BULK UPLOAD MODAL (DYNAMIC COLUMNS) */}
-      <BulkUploadModal<Record<string, any>>
+      {/* BULK IMPORT WIZARD */}
+      <BulkImportWizard
         open={isBulkOpen}
         onOpenChange={setIsBulkOpen}
-        title={`Bulk Import into "${activeSheet?.name}"`}
-        description="Upload a CSV matching the active sheet columns to insert rows in batch."
-        sampleFileName="prospects_template.csv"
-        columns={bulkColumns}
-        sampleData={[
-          {
-            company_name: "Sample Acme Ltd",
-            contact_person: "John Doe",
-            phone: "9876543210",
-            email: "john@acme.com",
-            service_inquired: "Company Registration",
-            status: "New",
-          },
-        ]}
-        schema={dynamicSchema}
-        onUpload={async (records) => {
-          if (!activeSheet) return { success: false, error: "No active sheet" };
-          return await bulkUploadProspectRowsAction(activeSheet.id, records);
-        }}
+        moduleKey="prospects"
+        options={{ sheetId: activeSheet?.id }}
         onSuccess={() => window.location.reload()}
       />
 

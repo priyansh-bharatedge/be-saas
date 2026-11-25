@@ -11,10 +11,14 @@ import {
   RotateCcw,
   Edit,
   Trash2,
+  UploadCloud,
 } from "lucide-react";
+import { Button } from "@/components/ui/button";
 import { EmployeeDetailDrawer } from "./EmployeeDetailDrawer";
 import EditEmployeeModal from "./EditEmployeeModal";
 import ConfirmationModal from "@/components/ui/confirmation-modal";
+import BulkImportWizard from "@/components/shared/BulkImportWizard";
+import BulkExportMenu from "@/components/shared/BulkExportMenu";
 import { deleteEmployeeAction } from "@/lib/actions/employee";
 import { DEPARTMENT_FILTER_TABS } from "@/lib/constants/departments";
 import { toast } from "sonner";
@@ -102,6 +106,8 @@ export function EmployeeListView({
   const [selectedRole, setSelectedRole] = useState("ALL");
   const [selectedStatus, setSelectedStatus] = useState("ALL");
   const [currentPage, setCurrentPage] = useState(1);
+  const [selectedEmployeeIds, setSelectedEmployeeIds] = useState<string[]>([]);
+  const [isImportOpen, setIsImportOpen] = useState(false);
   const pageSize = 8;
 
   // Drawer state for viewing employee full 360 profile
@@ -245,19 +251,52 @@ export function EmployeeListView({
         </div>
 
         {/* Action Row: Create Button + Search & Filters */}
-        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-5">
-          {/* Create Employee + Pill Button (Restricted to HR Admins, HR HOD, Super Admins) */}
-          {canCreate ? (
-            <Link
-              href="/hrms/directory/new"
-              className="inline-flex items-center gap-1.5 px-4 py-2 rounded-full border border-slate-200/90 bg-white/90 hover:bg-white text-slate-800 text-xs font-medium shadow-2xs hover:shadow-xs transition-all cursor-pointer w-fit"
-            >
-              <span>Create Employee</span>
-              <Plus className="h-3.5 w-3.5 text-slate-500" />
-            </Link>
-          ) : (
-            <div />
-          )}
+        <div className="relative z-20 flex flex-col md:flex-row md:items-center justify-between gap-4 mb-5">
+          {/* Create Employee + Import + Export Actions */}
+          <div className="flex flex-wrap items-center gap-2">
+            {canCreate && (
+              <Link
+                href="/hrms/directory/new"
+                className="inline-flex items-center gap-1.5 px-4 py-2 rounded-full border border-slate-200/90 bg-white/90 hover:bg-white text-slate-800 text-xs font-medium shadow-2xs hover:shadow-xs transition-all cursor-pointer w-fit"
+              >
+                <span>Create Employee</span>
+                <Plus className="h-3.5 w-3.5 text-slate-500" />
+              </Link>
+            )}
+
+            {canCreate && (
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => setIsImportOpen(true)}
+                className="rounded-full text-xs gap-1.5 h-9 border-slate-200 text-slate-700 bg-white/90 hover:bg-white shadow-2xs font-medium cursor-pointer"
+              >
+                <UploadCloud className="h-3.5 w-3.5 text-[#F0944D]" />
+                Import Directory
+              </Button>
+            )}
+
+            <BulkExportMenu
+              moduleKey="employees"
+              selectedIds={selectedEmployeeIds}
+              totalCount={filteredEmployees.length}
+              searchQuery={search}
+            />
+
+            {selectedEmployeeIds.length > 0 && (
+              <div className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-orange-50 border border-orange-200 text-xs text-[#F0944D] font-semibold">
+                <span>{selectedEmployeeIds.length} selected</span>
+                <button
+                  type="button"
+                  onClick={() => setSelectedEmployeeIds([])}
+                  className="text-[10px] underline hover:text-orange-700 ml-1 cursor-pointer"
+                >
+                  Clear
+                </button>
+              </div>
+            )}
+          </div>
 
           {/* Search & Filters */}
           <div className="flex flex-wrap items-center gap-2.5">
@@ -332,7 +371,21 @@ export function EmployeeListView({
             {/* Table Header (thead): Shaded translucent gray row with sentence case typography */}
             <thead>
               <tr className="bg-[#E7EAEF]/90 text-slate-600">
-                <th className="py-3 px-4 pl-5 font-medium text-slate-600 rounded-l-2xl whitespace-nowrap">
+                <th className="py-3 px-3 pl-4 font-medium text-slate-600 rounded-l-2xl whitespace-nowrap w-10 text-center">
+                  <input
+                    type="checkbox"
+                    checked={filteredEmployees.length > 0 && selectedEmployeeIds.length === filteredEmployees.length}
+                    onChange={() => {
+                      if (selectedEmployeeIds.length === filteredEmployees.length) {
+                        setSelectedEmployeeIds([]);
+                      } else {
+                        setSelectedEmployeeIds(filteredEmployees.map((e) => e.id));
+                      }
+                    }}
+                    className="rounded border-slate-300 text-[#F0944D] focus:ring-[#F0944D] cursor-pointer"
+                  />
+                </th>
+                <th className="py-3 px-4 font-medium text-slate-600 whitespace-nowrap">
                   Employee ID
                 </th>
                 <th className="py-3 px-4 font-medium text-slate-600 whitespace-nowrap">
@@ -366,7 +419,7 @@ export function EmployeeListView({
             <tbody>
               {paginatedEmployees.length === 0 ? (
                 <tr>
-                  <td colSpan={9} className="text-center py-12 text-slate-400">
+                  <td colSpan={10} className="text-center py-12 text-slate-400">
                     <Users className="h-8 w-8 mx-auto mb-2 opacity-40" />
                     <p className="font-semibold text-slate-600">No employees found</p>
                     <p className="text-[11px] text-slate-400 mt-0.5">Try adjusting your search query or department filter.</p>
@@ -379,6 +432,20 @@ export function EmployeeListView({
                     className="hover:bg-white/60 transition-colors cursor-pointer group"
                     onClick={() => handleOpenDrawer(emp)}
                   >
+                    <td className="py-3.5 px-3 pl-4 border-b border-slate-200/50 text-center" onClick={(e) => e.stopPropagation()}>
+                      <input
+                        type="checkbox"
+                        checked={selectedEmployeeIds.includes(emp.id)}
+                        onChange={() =>
+                          setSelectedEmployeeIds((prev) =>
+                            prev.includes(emp.id)
+                              ? prev.filter((id) => id !== emp.id)
+                              : [...prev, emp.id]
+                          )
+                        }
+                        className="rounded border-slate-300 text-[#F0944D] focus:ring-[#F0944D] cursor-pointer"
+                      />
+                    </td>
                     {/* Employee ID */}
                     <td className="py-3.5 px-4 pl-5 border-b border-slate-200/50 font-mono text-slate-600 text-xs whitespace-nowrap">
                       {emp.employeeId}
@@ -528,6 +595,14 @@ export function EmployeeListView({
         confirmLabel="Confirm Delete"
         isPending={isDeletePending}
         onConfirm={handleConfirmDelete}
+      />
+
+      {/* Bulk Import Directory Wizard */}
+      <BulkImportWizard
+        open={isImportOpen}
+        onOpenChange={setIsImportOpen}
+        moduleKey="employees"
+        onSuccess={() => window.location.reload()}
       />
     </div>
   );

@@ -21,7 +21,8 @@ import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
 import ServiceFormModal from "@/components/crm/ServiceFormModal";
 import ServiceDetailModal from "@/components/crm/ServiceDetailModal";
-import BulkUploadModal, { BulkUploadColumnDef } from "@/components/crm/BulkUploadModal";
+import BulkImportWizard from "@/components/shared/BulkImportWizard";
+import BulkExportMenu from "@/components/shared/BulkExportMenu";
 import ConfirmationModal from "@/components/ui/confirmation-modal";
 import {
   SerializedService,
@@ -36,40 +37,6 @@ interface ServicesViewProps {
   initialServices: SerializedService[];
   initialCategories: string[];
 }
-
-const BULK_COLUMNS: BulkUploadColumnDef[] = [
-  { key: "name", header: "Service Name", aliases: ["service", "title"], required: true },
-  { key: "code", header: "Service Code", aliases: ["code", "sku"] },
-  { key: "category", header: "Category", aliases: ["dept", "type"], required: true },
-  { key: "minimumPrice", header: "Minimum Price", aliases: ["min price", "price"], type: "number", required: true },
-  { key: "outsourcePrice", header: "Outsource Cost", aliases: ["vendor price", "cost"], type: "number" },
-  { key: "sacCode", header: "SAC Code", aliases: ["sac", "hsn"] },
-  { key: "defaultGstRate", header: "GST Rate", aliases: ["gst", "tax"], type: "number" },
-  { key: "description", header: "Description", aliases: ["details", "notes"] },
-];
-
-const SAMPLE_DATA: Record<string, string | number>[] = [
-  {
-    name: "Private Limited Company Registration",
-    code: "SRV-PL-01",
-    category: "Corporate Legal",
-    minimumPrice: 6500,
-    outsourcePrice: 2000,
-    sacCode: "998311",
-    defaultGstRate: 18,
-    description: "Complete incorporation including name approval, DSC, MOA, and AOA filing.",
-  },
-  {
-    name: "GST Registration & Verification",
-    code: "SRV-GST-01",
-    category: "Direct & Indirect Taxation",
-    minimumPrice: 2500,
-    outsourcePrice: 800,
-    sacCode: "998231",
-    defaultGstRate: 18,
-    description: "New GSTIN registration with principal place of business verification.",
-  },
-];
 
 export default function ServicesView({
   initialServices,
@@ -89,6 +56,7 @@ export default function ServicesView({
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const [isBulkOpen, setIsBulkOpen] = useState(false);
+  const [selectedServiceIds, setSelectedServiceIds] = useState<string[]>([]);
 
   const [deletingService, setDeletingService] = useState<SerializedService | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
@@ -235,7 +203,7 @@ export default function ServicesView({
       </div>
 
       {/* Filter and Action Bar */}
-      <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 p-3.5 rounded-2xl bg-white/80 backdrop-blur-md border border-slate-200/80 shadow-2xs">
+      <div className="relative z-20 flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 p-3.5 rounded-2xl bg-white border border-slate-200/80 shadow-2xs">
         <div className="flex flex-1 items-center gap-2.5">
           <div className="relative flex-1 max-w-sm">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-400" />
@@ -273,15 +241,35 @@ export default function ServicesView({
         </div>
 
         <div className="flex items-center gap-2 shrink-0">
+          {selectedServiceIds.length > 0 && (
+            <div className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-orange-50 border border-orange-200 text-xs text-[#F0944D] font-semibold">
+              <span>{selectedServiceIds.length} selected</span>
+              <button
+                type="button"
+                onClick={() => setSelectedServiceIds([])}
+                className="text-[10px] underline hover:text-orange-700 ml-1 cursor-pointer"
+              >
+                Clear
+              </button>
+            </div>
+          )}
+
+          <BulkExportMenu
+            moduleKey="services"
+            selectedIds={selectedServiceIds}
+            totalCount={filteredServices.length}
+            searchQuery={search}
+          />
+
           <Button
             type="button"
             variant="outline"
             size="sm"
             onClick={() => setIsBulkOpen(true)}
-            className="rounded-full text-xs gap-1.5 h-9 border-slate-200 text-slate-700 hover:text-slate-900 shadow-2xs"
+            className="rounded-full text-xs gap-1.5 h-9 border-slate-200 text-slate-700 hover:text-slate-900 shadow-2xs font-medium"
           >
             <UploadCloud className="h-3.5 w-3.5 text-[#F0944D]" />
-            Bulk Upload CSV
+            Import Services
           </Button>
 
           <Button
@@ -302,6 +290,20 @@ export default function ServicesView({
           <table className="w-full text-left text-xs">
             <thead className="bg-slate-50/70 border-b border-slate-200/80 text-slate-500 font-semibold uppercase tracking-wider text-[10px]">
               <tr>
+                <th className="py-3 px-3 w-10 text-center">
+                  <input
+                    type="checkbox"
+                    checked={filteredServices.length > 0 && selectedServiceIds.length === filteredServices.length}
+                    onChange={() => {
+                      if (selectedServiceIds.length === filteredServices.length) {
+                        setSelectedServiceIds([]);
+                      } else {
+                        setSelectedServiceIds(filteredServices.map((s) => s.id));
+                      }
+                    }}
+                    className="rounded border-slate-300 text-[#F0944D] focus:ring-[#F0944D] cursor-pointer"
+                  />
+                </th>
                 <th className="py-3 px-4">Service Details</th>
                 <th className="py-3 px-4">Category</th>
                 <th className="py-3 px-4 text-right">Floor Price</th>
@@ -314,17 +316,31 @@ export default function ServicesView({
             <tbody className="divide-y divide-slate-100 text-slate-700">
               {filteredServices.length === 0 ? (
                 <tr>
-                  <td colSpan={7} className="py-12 text-center text-slate-400">
+                  <td colSpan={8} className="py-12 text-center text-slate-400">
                     <Layers className="h-8 w-8 mx-auto text-slate-300 mb-2" />
                     <p className="font-semibold text-slate-600">No services found</p>
                     <p className="text-[11px] mt-0.5">
-                      {search ? "Try adjusting your search criteria" : "Click 'New Service' or 'Bulk Upload CSV' to register offerings."}
+                      {search ? "Try adjusting your search criteria" : "Click 'New Service' or 'Import Services' to register offerings."}
                     </p>
                   </td>
                 </tr>
               ) : (
                 filteredServices.map((service) => (
                   <tr key={service.id} className="hover:bg-slate-50/60 transition-colors group">
+                    <td className="py-3 px-3 text-center">
+                      <input
+                        type="checkbox"
+                        checked={selectedServiceIds.includes(service.id)}
+                        onChange={() =>
+                          setSelectedServiceIds((prev) =>
+                            prev.includes(service.id)
+                              ? prev.filter((id) => id !== service.id)
+                              : [...prev, service.id]
+                          )
+                        }
+                        className="rounded border-slate-300 text-[#F0944D] focus:ring-[#F0944D] cursor-pointer"
+                      />
+                    </td>
                     {/* Name & Code */}
                     <td className="py-3 px-4">
                       <div className="font-bold text-slate-900 group-hover:text-[#F0944D] transition-colors">
@@ -431,17 +447,12 @@ export default function ServicesView({
         isSubmitting={isSubmitting}
       />
 
-      {/* Bulk Upload Modal */}
-      <BulkUploadModal<ServiceFormData>
+      {/* Bulk Import Wizard Modal */}
+      <BulkImportWizard
         open={isBulkOpen}
         onOpenChange={setIsBulkOpen}
-        title="Bulk Upload Services"
-        description="Batch register services into the catalog with pricing safeguards and SAC codes."
-        sampleFileName="bharatedge_services_template.csv"
-        columns={BULK_COLUMNS}
-        sampleData={SAMPLE_DATA}
-        schema={serviceSchema}
-        onUpload={handleBulkUpload}
+        moduleKey="services"
+        onSuccess={() => window.location.reload()}
       />
 
       {/* Confirmation Delete Modal */}

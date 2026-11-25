@@ -30,7 +30,8 @@ import { toast } from "sonner";
 import OperationFormModal from "@/components/crm/OperationFormModal";
 import OperationDetailModal from "@/components/crm/OperationDetailModal";
 import QualityAuditModal from "@/components/crm/QualityAuditModal";
-import BulkUploadModal, { BulkUploadColumnDef } from "@/components/crm/BulkUploadModal";
+import BulkImportWizard from "@/components/shared/BulkImportWizard";
+import BulkExportMenu from "@/components/shared/BulkExportMenu";
 import {
   SerializedOperation,
   OperationMasterData,
@@ -90,6 +91,7 @@ export default function OperationsView({
 
   // Bulk Upload Modal
   const [isBulkOpen, setIsBulkOpen] = useState(false);
+  const [selectedOperationIds, setSelectedOperationIds] = useState<string[]>([]);
 
   // Quick Action Pending
   const [actionPendingId, setActionPendingId] = useState<string | null>(null);
@@ -307,28 +309,6 @@ export default function OperationsView({
     }
   };
 
-  const bulkColumns: BulkUploadColumnDef[] = [
-    { key: "dealId", header: "Parent Deal ID", required: true },
-    { key: "serviceName", header: "Service Name", required: true },
-    { key: "teamType", header: "Team Type", required: false },
-    { key: "internalStage", header: "Internal Stage", required: false },
-  ];
-
-  const sampleBulkData = [
-    {
-      dealId: "cm...deal_id",
-      serviceName: "Private Limited Company Incorporation",
-      teamType: "Team Incorporation",
-      internalStage: "Initiation & KYC Intake",
-    },
-    {
-      dealId: "cm...deal_id",
-      serviceName: "Pitch Deck & Financial Modeling",
-      teamType: "Team Funding",
-      internalStage: "Pitch Deck & Executive Summary Review",
-    },
-  ];
-
   return (
     <div className="space-y-6">
       {/* 1. METRICS CARDS */}
@@ -395,7 +375,7 @@ export default function OperationsView({
       </div>
 
       {/* 2. DYNAMIC WORKFLOW TABS */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-200/80 pb-2">
+      <div className="relative z-20 flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-200/80 pb-2">
         <div className="flex items-center gap-1.5 overflow-x-auto scrollbar-none py-1">
           <button
             type="button"
@@ -434,18 +414,40 @@ export default function OperationsView({
           </button>
         </div>
 
-        {/* Bulk Upload Button */}
-        {(isOperationHod || canManageAll) && (
-          <Button
-            size="sm"
-            variant="outline"
-            onClick={() => setIsBulkOpen(true)}
-            className="h-8 text-xs font-semibold text-slate-700 hover:bg-slate-100 gap-1.5 shrink-0"
-          >
-            <UploadCloud className="h-3.5 w-3.5 text-slate-500" />
-            Bulk Import CSV
-          </Button>
-        )}
+        {/* Export & Import Action Buttons */}
+        <div className="flex items-center gap-2">
+          {selectedOperationIds.length > 0 && (
+            <div className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-orange-50 border border-orange-200 text-xs text-[#F0944D] font-semibold">
+              <span>{selectedOperationIds.length} selected</span>
+              <button
+                type="button"
+                onClick={() => setSelectedOperationIds([])}
+                className="text-[10px] underline hover:text-orange-700 ml-1 cursor-pointer"
+              >
+                Clear
+              </button>
+            </div>
+          )}
+
+          <BulkExportMenu
+            moduleKey="operations"
+            selectedIds={selectedOperationIds}
+            totalCount={filteredOperations.length}
+            searchQuery={search}
+          />
+
+          {(isOperationHod || canManageAll) && (
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => setIsBulkOpen(true)}
+              className="h-8 text-xs font-semibold text-slate-700 hover:bg-slate-100 gap-1.5 shrink-0"
+            >
+              <UploadCloud className="h-3.5 w-3.5 text-[#F0944D]" />
+              Import Operations
+            </Button>
+          )}
+        </div>
       </div>
 
       {/* 3. DYNAMIC FILTERS & SEARCH BAR */}
@@ -590,6 +592,20 @@ export default function OperationsView({
           <table className="w-full text-left border-collapse text-xs">
             <thead>
               <tr className="border-b border-slate-200/80 bg-slate-50/70 text-slate-500 font-semibold uppercase tracking-wider text-[11px]">
+                <th className="py-3 px-3 w-10 text-center">
+                  <input
+                    type="checkbox"
+                    checked={filteredOperations.length > 0 && selectedOperationIds.length === filteredOperations.length}
+                    onChange={() => {
+                      if (selectedOperationIds.length === filteredOperations.length) {
+                        setSelectedOperationIds([]);
+                      } else {
+                        setSelectedOperationIds(filteredOperations.map((o) => o.id));
+                      }
+                    }}
+                    className="rounded border-slate-300 text-[#F0944D] focus:ring-[#F0944D] cursor-pointer"
+                  />
+                </th>
                 <th className="py-3 px-4">Operation #</th>
                 <th className="py-3 px-4">Parent Deal & Company</th>
                 <th className="py-3 px-4">Service & Team Type</th>
@@ -604,7 +620,7 @@ export default function OperationsView({
             <tbody className="divide-y divide-slate-100">
               {filteredOperations.length === 0 ? (
                 <tr>
-                  <td colSpan={9} className="py-12 text-center text-slate-400">
+                  <td colSpan={10} className="py-12 text-center text-slate-400">
                     <div className="flex flex-col items-center justify-center space-y-2">
                       <GitBranch className="h-8 w-8 text-slate-300" />
                       <p className="font-semibold text-slate-600">No operations found</p>
@@ -625,6 +641,20 @@ export default function OperationsView({
                       key={op.id}
                       className="hover:bg-slate-50/60 transition-colors group"
                     >
+                      <td className="py-3 px-3 text-center">
+                        <input
+                          type="checkbox"
+                          checked={selectedOperationIds.includes(op.id)}
+                          onChange={() =>
+                            setSelectedOperationIds((prev) =>
+                              prev.includes(op.id)
+                                ? prev.filter((id) => id !== op.id)
+                                : [...prev, op.id]
+                            )
+                          }
+                          className="rounded border-slate-300 text-[#F0944D] focus:ring-[#F0944D] cursor-pointer"
+                        />
+                      </td>
                       {/* Operation Number */}
                       <td className="py-3 px-4">
                         <div className="font-mono font-bold text-slate-900 flex items-center gap-1.5">
@@ -862,19 +892,11 @@ export default function OperationsView({
         isSubmitting={isSubmittingAudit}
       />
 
-      <BulkUploadModal
+      <BulkImportWizard
         open={isBulkOpen}
         onOpenChange={setIsBulkOpen}
-        title="Bulk Import Internal Operations"
-        description="Upload CSV spreadsheet to batch import service child operations mapped to deals."
-        sampleFileName="operations_template.csv"
-        columns={bulkColumns}
-        sampleData={sampleBulkData}
-        schema={bulkOperationSchema as any}
-        onUpload={bulkUploadOperationsAction as any}
-        onSuccess={() => {
-          toast.success("Operations batch import completed!");
-        }}
+        moduleKey="operations"
+        onSuccess={() => window.location.reload()}
       />
     </div>
   );

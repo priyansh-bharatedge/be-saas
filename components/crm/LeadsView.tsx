@@ -23,7 +23,8 @@ import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
 import LeadFormModal from "@/components/crm/LeadFormModal";
 import LeadDetailModal from "@/components/crm/LeadDetailModal";
-import BulkUploadModal, { BulkUploadColumnDef } from "@/components/crm/BulkUploadModal";
+import BulkImportWizard from "@/components/shared/BulkImportWizard";
+import BulkExportMenu from "@/components/shared/BulkExportMenu";
 import ConfirmationModal from "@/components/ui/confirmation-modal";
 import {
   SerializedLead,
@@ -40,40 +41,6 @@ interface LeadsViewProps {
   employees: { id: string; name: string; department: string }[];
   canManageAll: boolean;
 }
-
-const BULK_COLUMNS: BulkUploadColumnDef[] = [
-  { key: "name", header: "Contact Person", aliases: ["lead name", "contact", "name"], required: true },
-  { key: "phone", header: "Phone Number", aliases: ["mobile", "phone"], required: true },
-  { key: "email", header: "Email Address", aliases: ["email", "mail"] },
-  { key: "companyName", header: "Company Name", aliases: ["company", "organization"] },
-  { key: "source", header: "Lead Source", aliases: ["channel", "source"] },
-  { key: "status", header: "Status", aliases: ["stage", "lead status"] },
-  { key: "estimatedBudget", header: "Estimated Budget", aliases: ["budget", "value"], type: "number" },
-  { key: "notes", header: "Notes", aliases: ["requirement", "description"] },
-];
-
-const SAMPLE_DATA: Record<string, string | number>[] = [
-  {
-    name: "Rameshwar Patel",
-    phone: "9825098765",
-    email: "rameshwar@patelagro.com",
-    companyName: "Patel Agro Enterprises",
-    source: "Website Inbound",
-    status: "NEW",
-    estimatedBudget: 35000,
-    notes: "Requires private limited incorporation & trademark registration.",
-  },
-  {
-    name: "Meera Sen",
-    phone: "9871122334",
-    email: "meera.sen@designcraft.in",
-    companyName: "DesignCraft Studios",
-    source: "LinkedIn Campaign",
-    status: "QUALIFIED",
-    estimatedBudget: 50000,
-    notes: "Interested in monthly corporate compliance and GST retainer.",
-  },
-];
 
 function getStatusBadge(status: LeadStatus) {
   switch (status) {
@@ -145,6 +112,7 @@ export default function LeadsView({
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const [isBulkOpen, setIsBulkOpen] = useState(false);
+  const [selectedLeadIds, setSelectedLeadIds] = useState<string[]>([]);
 
   const [deletingLead, setDeletingLead] = useState<SerializedLead | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
@@ -290,7 +258,7 @@ export default function LeadsView({
       </div>
 
       {/* Filter and Action Bar */}
-      <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 p-3.5 rounded-2xl bg-white/80 backdrop-blur-md border border-slate-200/80 shadow-2xs">
+      <div className="relative z-20 flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 p-3.5 rounded-2xl bg-white border border-slate-200/80 shadow-2xs">
         <div className="flex flex-1 items-center gap-2.5">
           <div className="relative flex-1 max-w-sm">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-400" />
@@ -335,15 +303,35 @@ export default function LeadsView({
         </div>
 
         <div className="flex items-center gap-2 shrink-0">
+          {selectedLeadIds.length > 0 && (
+            <div className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-orange-50 border border-orange-200 text-xs text-[#F0944D] font-semibold">
+              <span>{selectedLeadIds.length} selected</span>
+              <button
+                type="button"
+                onClick={() => setSelectedLeadIds([])}
+                className="text-[10px] underline hover:text-orange-700 ml-1 cursor-pointer"
+              >
+                Clear
+              </button>
+            </div>
+          )}
+
+          <BulkExportMenu
+            moduleKey="leads"
+            selectedIds={selectedLeadIds}
+            totalCount={filteredLeads.length}
+            searchQuery={search}
+          />
+
           <Button
             type="button"
             variant="outline"
             size="sm"
             onClick={() => setIsBulkOpen(true)}
-            className="rounded-full text-xs gap-1.5 h-9 border-slate-200 text-slate-700 hover:text-slate-900 shadow-2xs"
+            className="rounded-full text-xs gap-1.5 h-9 border-slate-200 text-slate-700 hover:text-slate-900 shadow-2xs font-medium"
           >
             <UploadCloud className="h-3.5 w-3.5 text-[#F0944D]" />
-            Bulk Upload CSV
+            Import Leads
           </Button>
 
           <Button
@@ -364,6 +352,20 @@ export default function LeadsView({
           <table className="w-full text-left text-xs">
             <thead className="bg-slate-50/70 border-b border-slate-200/80 text-slate-500 font-semibold uppercase tracking-wider text-[10px]">
               <tr>
+                <th className="py-3 px-3 w-10 text-center">
+                  <input
+                    type="checkbox"
+                    checked={filteredLeads.length > 0 && selectedLeadIds.length === filteredLeads.length}
+                    onChange={() => {
+                      if (selectedLeadIds.length === filteredLeads.length) {
+                        setSelectedLeadIds([]);
+                      } else {
+                        setSelectedLeadIds(filteredLeads.map((l) => l.id));
+                      }
+                    }}
+                    className="rounded border-slate-300 text-[#F0944D] focus:ring-[#F0944D] cursor-pointer"
+                  />
+                </th>
                 <th className="py-3 px-4">Lead Opportunity</th>
                 <th className="py-3 px-4">Contact Person</th>
                 <th className="py-3 px-4">Channel Source</th>
@@ -376,19 +378,33 @@ export default function LeadsView({
             <tbody className="divide-y divide-slate-100 text-slate-700">
               {filteredLeads.length === 0 ? (
                 <tr>
-                  <td colSpan={7} className="py-12 text-center text-slate-400">
+                  <td colSpan={8} className="py-12 text-center text-slate-400">
                     <UserPlus className="h-8 w-8 mx-auto text-slate-300 mb-2" />
                     <p className="font-semibold text-slate-600">No leads captured yet</p>
                     <p className="text-[11px] mt-0.5">
                       {search
                         ? "Try searching another phone number, contact, or company"
-                        : "Click 'Capture Lead' or 'Bulk Upload CSV' to start tracking opportunities."}
+                        : "Click 'Capture Lead' or 'Import Leads' to start tracking opportunities."}
                     </p>
                   </td>
                 </tr>
               ) : (
                 filteredLeads.map((lead) => (
                   <tr key={lead.id} className="hover:bg-slate-50/60 transition-colors group">
+                    <td className="py-3 px-3 text-center">
+                      <input
+                        type="checkbox"
+                        checked={selectedLeadIds.includes(lead.id)}
+                        onChange={() =>
+                          setSelectedLeadIds((prev) =>
+                            prev.includes(lead.id)
+                              ? prev.filter((id) => id !== lead.id)
+                              : [...prev, lead.id]
+                          )
+                        }
+                        className="rounded border-slate-300 text-[#F0944D] focus:ring-[#F0944D] cursor-pointer"
+                      />
+                    </td>
                     {/* Identifier */}
                     <td className="py-3 px-4">
                       <div className="font-bold text-slate-900 group-hover:text-[#F0944D] transition-colors">
@@ -491,17 +507,12 @@ export default function LeadsView({
         isSubmitting={isSubmitting}
       />
 
-      {/* Bulk Upload Modal */}
-      <BulkUploadModal<LeadFormData>
+      {/* Bulk Import Wizard Modal */}
+      <BulkImportWizard
         open={isBulkOpen}
         onOpenChange={setIsBulkOpen}
-        title="Bulk Upload Leads"
-        description="Batch capture leads with contact numbers, channel sources, qualification statuses, and budgets."
-        sampleFileName="bharatedge_leads_template.csv"
-        columns={BULK_COLUMNS}
-        sampleData={SAMPLE_DATA}
-        schema={leadSchema}
-        onUpload={handleBulkUpload}
+        moduleKey="leads"
+        onSuccess={() => window.location.reload()}
       />
 
       {/* Confirmation Delete Modal */}
