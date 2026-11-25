@@ -47,8 +47,8 @@ export default function LoginPage() {
     watch,
   } = useForm<AuthFormData>({
     defaultValues: {
-      email: "admin@bharatedge.com",
-      password: "Enterprise@2026",
+      email: "",
+      password: "",
       otp: "",
     },
     mode: "onBlur",
@@ -225,7 +225,8 @@ export default function LoginPage() {
                 type="email"
                 {...register("email", { required: true })}
                 disabled={authMode === "otp"}
-                placeholder="Enter enterprise email ID..."
+                placeholder="Enter your email address"
+                autoComplete="off"
                 className="w-full bg-transparent outline-none text-slate-900 placeholder:text-slate-400 font-mono text-xs"
               />
               <button
@@ -284,7 +285,8 @@ export default function LoginPage() {
                   <input
                     type="password"
                     {...register("password")}
-                    placeholder="Enter password (default: Enterprise@2026)"
+                    placeholder="Enter your password"
+                    autoComplete="new-password"
                     className="w-full bg-transparent outline-none text-slate-900 placeholder:text-slate-400 text-xs"
                     autoFocus
                   />
