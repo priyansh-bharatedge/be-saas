@@ -17,14 +17,54 @@ export async function middleware(request: NextRequest) {
     return NextResponse.next();
   }
 
-  // Retrieve token via NextAuth
-  const token = await getToken({
-    req: request,
-    secret:
-      process.env.AUTH_SECRET ||
-      process.env.NEXTAUTH_SECRET ||
-      "bharatedge-enterprise-super-secure-jwt-key-2026-edge-saas",
-  });
+  // Retrieve token via NextAuth (support both HTTP and HTTPS proxy cookies)
+  const cookieNames = [
+    "__Secure-authjs.session-token",
+    "authjs.session-token",
+    "__Secure-next-auth.session-token",
+    "next-auth.session-token",
+  ];
+
+  const foundCookieName = cookieNames.find((name) => request.cookies.has(name));
+
+  const secret =
+    process.env.AUTH_SECRET ||
+    process.env.NEXTAUTH_SECRET ||
+    "bharatedge-enterprise-super-secure-jwt-key-2026-edge-saas";
+
+  let token = null;
+
+  if (foundCookieName) {
+    token = await getToken({
+      req: request,
+      secret,
+      cookieName: foundCookieName,
+      secureCookie: foundCookieName.startsWith("__Secure-"),
+    });
+  }
+
+  if (!token) {
+    token = await getToken({
+      req: request,
+      secret,
+    });
+  }
+
+  if (!token) {
+    token = await getToken({
+      req: request,
+      secret,
+      secureCookie: true,
+    });
+  }
+
+  if (!token) {
+    token = await getToken({
+      req: request,
+      secret,
+      secureCookie: false,
+    });
+  }
 
   const isAuthenticated = !!token;
   const userRole = (token?.role as Role) || null;

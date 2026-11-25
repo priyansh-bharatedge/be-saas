@@ -99,8 +99,8 @@ export default function LoginPage() {
       const res = await loginWithPasswordAction(emailValue, passwordValue || "");
       if (res.success && res.redirectTo) {
         toast.success("Authentication successful! Welcome to BharatEdge.");
-        router.push(res.redirectTo);
-        router.refresh();
+        window.location.href = res.redirectTo;
+        return;
       } else {
         toast.error(res.error || "Invalid credentials or user not found.");
       }
@@ -160,8 +160,8 @@ export default function LoginPage() {
       const res = await loginWithOtpAction(emailValue, otpValue || "");
       if (res.success && res.redirectTo) {
         toast.success("OTP verified! Welcome to BharatEdge.");
-        router.push(res.redirectTo);
-        router.refresh();
+        window.location.href = res.redirectTo;
+        return;
       } else {
         toast.error(res.error || "Invalid or expired OTP code.");
         if (res.error?.includes("invalidated") || res.error?.includes("expired")) {
