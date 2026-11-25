@@ -51,9 +51,11 @@ export async function middleware(request: NextRequest) {
   // Protected routes: require authentication
   const isProtectedRoute =
     pathname.startsWith("/portal") ||
+    pathname.startsWith("/admin") ||
     pathname.startsWith("/crm") ||
     pathname.startsWith("/hrms") ||
-    pathname.startsWith("/support");
+    pathname.startsWith("/support") ||
+    pathname.startsWith("/chat");
 
   if (isProtectedRoute && !isAuthenticated) {
     const loginUrl = new URL("/login", request.url);
@@ -69,6 +71,15 @@ export async function middleware(request: NextRequest) {
       systemRole: token.systemRole,
       department: token.department,
     };
+
+    if (
+      pathname.startsWith("/admin") &&
+      !(token.role === Role.Admin || token.systemRole === "SUPER_ADMIN")
+    ) {
+      const portalUrl = new URL("/portal", request.url);
+      portalUrl.searchParams.set("denied", "admin");
+      return NextResponse.redirect(portalUrl);
+    }
 
     if (pathname.startsWith("/crm") && !canAccessModule(authUser, pathname)) {
       const portalUrl = new URL("/portal", request.url);

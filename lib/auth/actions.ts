@@ -119,15 +119,9 @@ export async function loginWithPasswordAction(
       redirect: false,
     });
 
-    const emp = await db.employee.findUnique({
-      where: { workEmail: validated.email.toLowerCase() },
-      select: { role: true, systemRole: true },
-    });
-    const isSuperAdmin = emp?.role === Role.Admin || emp?.systemRole === SystemRole.SUPER_ADMIN;
-
     return {
       success: true,
-      redirectTo: isSuperAdmin ? "/admin" : "/portal",
+      redirectTo: "/portal",
     };
   } catch (err: unknown) {
     if (err instanceof AuthError) {
@@ -175,15 +169,9 @@ export async function loginWithOtpAction(
       redirect: false,
     });
 
-    const emp = await db.employee.findUnique({
-      where: { workEmail: validated.email.toLowerCase() },
-      select: { role: true, systemRole: true },
-    });
-    const isSuperAdmin = emp?.role === Role.Admin || emp?.systemRole === SystemRole.SUPER_ADMIN;
-
     return {
       success: true,
-      redirectTo: isSuperAdmin ? "/admin" : "/portal",
+      redirectTo: "/portal",
     };
   } catch (err: unknown) {
     if (err instanceof AuthError) {
