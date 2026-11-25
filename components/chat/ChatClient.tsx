@@ -12,6 +12,7 @@ import { ContactInfoDrawer, ContactInfoProfile } from "./ContactInfoDrawer";
 import { PhotoLightboxModal } from "./PhotoLightboxModal";
 import { StagedAttachment } from "./MessageComposer";
 import { playSendSound, playReceiveSound } from "@/lib/chat/audio";
+import { toast } from "sonner";
 
 interface ChatClientProps {
   initialConversations: ConversationSummary[];
@@ -60,6 +61,9 @@ export function ChatClient({
   // WhatsApp-Style Contact Info Drawer state
   const [contactDrawerOpen, setContactDrawerOpen] = useState(false);
   const [selectedContact, setSelectedContact] = useState<ContactInfoProfile | null>(null);
+
+  // AI Agent Copilot state
+  const [isAiThinking, setIsAiThinking] = useState(false);
 
   // Full-Screen Photo Lightbox Modal state
   const [lightboxState, setLightboxState] = useState<{
@@ -422,6 +426,26 @@ export function ChatClient({
     setShowMobileChat(true);
   };
 
+  // Trigger On-Demand AI Scheduled Briefing (Dev Test Menu)
+  const handleTriggerTestReport = async (reportSlug: string) => {
+    if (!activeId) return;
+    try {
+      const res = await fetch(`/api/cron/ai-agent/${reportSlug}?force=true`, {
+        method: "POST",
+      });
+      const data = await res.json();
+      if (data.success) {
+        toast.success(`Generated ${reportSlug.replace("-", " ")} briefing!`);
+        await fetchMessages(activeId, false);
+        await fetchConversations();
+      } else {
+        toast.error(data.error || "Failed to trigger report.");
+      }
+    } catch (err: any) {
+      toast.error(err.message || "Failed to trigger report.");
+    }
+  };
+
   // Handle send message with optimistic UI and notification sound
   const handleSendMessage = async (payload: {
     content?: string;
@@ -434,6 +458,104 @@ export function ChatClient({
   }) => {
     // In Oversight Mode, message sending is blocked
     if (!activeId || chatMode === "ALL_ORG_CHATS") return;
+
+    // AI Agent Conversation Handler
+    if (activeConversation?.isAiAgent) {
+      if (!payload.content?.trim()) return;
+
+      playSendSound();
+
+      const tempId = `temp-${Date.now()}`;
+      const optimisticMsg: MessageItem = {
+        id: tempId,
+        conversationId: activeId,
+        senderId: currentUserId,
+        senderName: "You",
+        senderInitials: "YO",
+        content: payload.content || null,
+        messageType: "TEXT",
+        attachmentUrl: null,
+        attachmentName: null,
+        attachmentSize: null,
+        attachmentMimeType: null,
+        createdAt: new Date().toISOString(),
+        isSelf: true,
+        status: "SENT",
+        reactions: [],
+      };
+
+      setMessages((prev) => [...prev, optimisticMsg]);
+      prevMessageIdsRef.current.add(tempId);
+      setIsAiThinking(true);
+
+      try {
+        const res = await fetch("/api/ai-agent/chat", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            message: payload.content,
+            conversationId: activeId,
+          }),
+        });
+
+        const data = await res.json();
+        if (data.success && data.data) {
+          playReceiveSound();
+          const userMsg: MessageItem = {
+            id: data.data.userMessage.id,
+            conversationId: activeId,
+            senderId: currentUserId,
+            senderName: data.data.userMessage.senderName,
+            senderAvatarUrl: data.data.userMessage.senderAvatar,
+            senderInitials: "YO",
+            content: data.data.userMessage.content,
+            messageType: data.data.userMessage.messageType,
+            attachmentUrl: null,
+            attachmentName: null,
+            attachmentSize: null,
+            attachmentMimeType: null,
+            createdAt: data.data.userMessage.createdAt,
+            isSelf: true,
+            status: "SENT",
+            reactions: [],
+          };
+          const botMsg: MessageItem = {
+            id: data.data.botMessage.id,
+            conversationId: activeId,
+            senderId: data.data.botMessage.senderId,
+            senderName: data.data.botMessage.senderName,
+            senderAvatarUrl: data.data.botMessage.senderAvatar,
+            senderInitials: "AI",
+            content: data.data.botMessage.content,
+            messageType: data.data.botMessage.messageType,
+            attachmentUrl: null,
+            attachmentName: null,
+            attachmentSize: null,
+            attachmentMimeType: null,
+            createdAt: data.data.botMessage.createdAt,
+            isSelf: false,
+            status: "SENT",
+            reactions: [],
+          };
+
+          setMessages((prev) => [
+            ...prev.map((m) => (m.id === tempId ? userMsg : m)),
+            botMsg,
+          ]);
+          prevMessageIdsRef.current.delete(tempId);
+          prevMessageIdsRef.current.add(botMsg.id);
+          fetchConversations();
+        } else {
+          toast.error(data.error || "Failed to get AI response.");
+        }
+      } catch (err: any) {
+        console.error("AI chat error:", err);
+        toast.error("Network error communicating with BharatEdge AI.");
+      } finally {
+        setIsAiThinking(false);
+      }
+      return;
+    }
 
     playSendSound();
 
@@ -821,6 +943,8 @@ export function ChatClient({
           isLoadingMessages={isLoadingMessages}
           onToggleReaction={handleToggleReaction}
           isOversightMode={chatMode === "ALL_ORG_CHATS"}
+          isAiThinking={isAiThinking}
+          onTriggerTestReport={handleTriggerTestReport}
         />
       </div>
 

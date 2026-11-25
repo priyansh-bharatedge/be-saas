@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { db } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth/session";
 import { getCrmUserScope, canUserModifyRecord } from "@/lib/auth/crm-scope";
+import { auditPaymentScreenshots } from "@/lib/ai/vision-auditor";
 import {
   paymentRecordSchema,
   quickClientSchema,
@@ -146,6 +147,11 @@ export async function getPaymentRecordsAction(params: {
       transactionRef: r.transactionRef,
       screenshotUrl: r.screenshotUrl,
       screenshotKey: r.screenshotKey,
+      screenshotUrls: r.screenshotUrls || (r.screenshotUrl ? [r.screenshotUrl] : []),
+      aiVerificationStatus: r.aiVerificationStatus,
+      aiDetectedAmount: r.aiDetectedAmount ? Number(r.aiDetectedAmount) : null,
+      aiAuditSummary: r.aiAuditSummary,
+      aiAuditedAt: r.aiAuditedAt ? r.aiAuditedAt.toISOString() : null,
       paymentDate: r.paymentDate.toISOString().split("T")[0],
       remarks: r.remarks,
       isConvertedToDeal: r.isConvertedToDeal || Boolean(r.dealId),
@@ -222,6 +228,9 @@ export async function createPaymentRecordAction(
         transactionRef: parsed.transactionRef || null,
         screenshotUrl: parsed.screenshotUrl || null,
         screenshotKey: parsed.screenshotKey || null,
+        screenshotUrls: parsed.screenshotUrls && parsed.screenshotUrls.length > 0
+          ? parsed.screenshotUrls
+          : (parsed.screenshotUrl ? [parsed.screenshotUrl] : []),
         paymentDate: new Date(parsed.paymentDate),
         remarks: parsed.remarks || null,
         recordedById: user.id,
@@ -256,6 +265,15 @@ export async function createPaymentRecordAction(
       }
     } catch (notifErr) {
       console.warn("[Payment Notification Error]:", notifErr);
+    }
+
+    // Trigger asynchronous non-blocking Background Vision AI Payment Audit
+    if (parsed.screenshotUrls?.length || parsed.screenshotUrl) {
+      setTimeout(() => {
+        auditPaymentScreenshots(payment.id).catch((err) =>
+          console.error("[Background Vision Audit Failed]:", err)
+        );
+      }, 50);
     }
 
     revalidatePath("/crm/payments");

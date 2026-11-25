@@ -27,6 +27,7 @@ import {
   ExternalLink,
   Eye,
   Image as ImageIcon,
+  X,
 } from "lucide-react";
 import { openDocumentPreview } from "@/components/modals/DocumentPreviewModal";
 import {
@@ -63,9 +64,9 @@ export default function PaymentRecordFormModal({
   const [quickClientEmail, setQuickClientEmail] = useState("");
   const [isCreatingQuickClient, setIsCreatingQuickClient] = useState(false);
 
-  // File upload state for screenshot
+  // File upload state for screenshot(s)
   const [isUploadingScreenshot, setIsUploadingScreenshot] = useState(false);
-  const [screenshotPreview, setScreenshotPreview] = useState<string | null>(null);
+  const [uploadedScreenshots, setUploadedScreenshots] = useState<{ url: string; key?: string; name: string }[]>([]);
 
   // Client search query
   const [clientSearchTerm, setClientSearchTerm] = useState("");
@@ -92,6 +93,7 @@ export default function PaymentRecordFormModal({
       transactionRef: "",
       screenshotUrl: "",
       screenshotKey: "",
+      screenshotUrls: [],
       paymentDate: new Date().toISOString().split("T")[0],
       remarks: "",
     },
@@ -116,10 +118,11 @@ export default function PaymentRecordFormModal({
         transactionRef: "",
         screenshotUrl: "",
         screenshotKey: "",
+        screenshotUrls: [],
         paymentDate: new Date().toISOString().split("T")[0],
         remarks: "",
       });
-      setScreenshotPreview(null);
+      setUploadedScreenshots([]);
       setClientSearchTerm("");
     }
   }, [open, reset]);
@@ -204,36 +207,58 @@ export default function PaymentRecordFormModal({
     }
   };
 
-  // Upload screenshot to Cloudflare R2
+  // Upload screenshot(s) to Cloudflare R2
   const handleScreenshotUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
+    const files = e.target.files;
+    if (!files || files.length === 0) return;
 
     setIsUploadingScreenshot(true);
     try {
-      const formData = new FormData();
-      formData.append("file", file);
-      formData.append("folder", "payments");
+      const newUploads: { url: string; key?: string; name: string }[] = [];
+      for (const file of Array.from(files)) {
+        const formData = new FormData();
+        formData.append("file", file);
+        formData.append("folder", "payments");
 
-      const res = await fetch("/api/upload", {
-        method: "POST",
-        body: formData,
-      });
+        const res = await fetch("/api/upload", {
+          method: "POST",
+          body: formData,
+        });
 
-      const data = await res.json();
-      if (data.success && data.url) {
-        setValue("screenshotUrl", data.url);
-        setValue("screenshotKey", data.key || "");
-        setScreenshotPreview(data.url);
-        toast.success("Payment screenshot uploaded to R2!");
+        const data = await res.json();
+        if (data.success && data.url) {
+          newUploads.push({
+            url: data.url,
+            key: data.key,
+            name: file.name,
+          });
+        }
+      }
+
+      if (newUploads.length > 0) {
+        const updated = [...uploadedScreenshots, ...newUploads];
+        setUploadedScreenshots(updated);
+        setValue("screenshotUrls", updated.map((s) => s.url));
+        setValue("screenshotUrl", updated[0]?.url || "");
+        setValue("screenshotKey", updated[0]?.key || "");
+        toast.success(`${newUploads.length} payment screenshot(s) uploaded!`);
       } else {
-        toast.error(data.error || "Upload failed.");
+        toast.error("Upload failed.");
       }
     } catch (err: any) {
       toast.error("Network error during file upload.");
     } finally {
       setIsUploadingScreenshot(false);
+      e.target.value = "";
     }
+  };
+
+  const handleRemoveScreenshot = (index: number) => {
+    const updated = uploadedScreenshots.filter((_, i) => i !== index);
+    setUploadedScreenshots(updated);
+    setValue("screenshotUrls", updated.map((s) => s.url));
+    setValue("screenshotUrl", updated[0]?.url || "");
+    setValue("screenshotKey", updated[0]?.key || "");
   };
 
   return (
@@ -439,56 +464,99 @@ export default function PaymentRecordFormModal({
             </div>
           </div>
 
-          {/* SECTION 4: PAYMENT SCREENSHOT (CLOUDFLARE R2 UPLOAD) */}
+          {/* SECTION 4: PAYMENT SCREENSHOTS (CLOUDFLARE R2 UPLOAD & MULTI-RECEIPT SUPPORT) */}
           <div className="rounded-xl border border-slate-200/80 bg-slate-50/50 p-4 space-y-3">
-            <Label className="text-xs font-semibold text-slate-700 flex items-center justify-between">
-              <span>Payment Proof / Screenshot (Cloudflare R2)</span>
-              {screenshotPreview && (
-                <button
-                  type="button"
-                  onClick={() =>
-                    openDocumentPreview(
-                      screenshotPreview,
-                      "Uploaded Payment Proof",
-                      "image"
-                    )
-                  }
-                  className="text-[11px] text-[#F0944D] hover:underline flex items-center gap-1 cursor-pointer"
-                >
-                  <Eye className="h-3 w-3" />
-                  View Uploaded File
-                </button>
-              )}
-            </Label>
-
-            <div className="flex flex-col sm:flex-row items-center gap-4">
-              <div className="flex-1 w-full">
-                <input
-                  type="file"
-                  accept="image/*,application/pdf"
-                  onChange={handleScreenshotUpload}
-                  disabled={isUploadingScreenshot}
-                  className="block w-full text-xs text-slate-500 file:mr-4 file:py-2 file:px-4 file:rounded-xl file:border-0 file:text-xs file:font-semibold file:bg-gradient-to-r file:from-[#ACCAD5]/20 file:to-[#F0944D]/20 file:text-slate-800 hover:file:opacity-90 cursor-pointer"
-                />
-              </div>
-
-              {isUploadingScreenshot && (
-                <div className="flex items-center gap-2 text-xs text-slate-500">
-                  <Loader2 className="h-4 w-4 animate-spin text-[#F0944D]" />
-                  <span>Uploading to R2...</span>
-                </div>
-              )}
-
-              {screenshotPreview && (
-                <div className="h-12 w-12 rounded-lg border border-slate-200 overflow-hidden shrink-0 bg-white shadow-2xs">
-                  <img
-                    src={screenshotPreview}
-                    alt="Receipt Thumbnail"
-                    className="h-full w-full object-cover"
-                  />
-                </div>
+            <div className="flex items-center justify-between">
+              <Label className="text-xs font-semibold text-slate-700">
+                Payment Proof(s) / Screenshots (Cloudflare R2)
+              </Label>
+              {uploadedScreenshots.length > 0 && (
+                <span className="text-[11px] font-semibold text-[#F0944D]">
+                  {uploadedScreenshots.length} receipt{uploadedScreenshots.length > 1 ? "s" : ""} attached
+                </span>
               )}
             </div>
+
+            <div>
+              <input
+                type="file"
+                multiple
+                accept="image/*,application/pdf"
+                onChange={handleScreenshotUpload}
+                disabled={isUploadingScreenshot}
+                className="block w-full text-xs text-slate-500 file:mr-4 file:py-2 file:px-4 file:rounded-xl file:border-0 file:text-xs file:font-semibold file:bg-gradient-to-r file:from-[#ACCAD5]/20 file:to-[#F0944D]/20 file:text-slate-800 hover:file:opacity-90 cursor-pointer"
+              />
+              <p className="text-[10px] text-slate-400 mt-1">
+                Upload one or multiple bank transaction receipts or UPI screenshots. AI Auditor will reconcile total against entered amount.
+              </p>
+            </div>
+
+            {isUploadingScreenshot && (
+              <div className="flex items-center gap-2 text-xs text-[#F0944D] bg-[#F0944D]/10 p-2.5 rounded-lg border border-[#F0944D]/20">
+                <Loader2 className="h-4 w-4 animate-spin text-[#F0944D]" />
+                <span>Uploading receipt(s) to R2 secure storage...</span>
+              </div>
+            )}
+
+            {uploadedScreenshots.length > 0 && (
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5 pt-2">
+                {uploadedScreenshots.map((item, idx) => (
+                  <div
+                    key={idx}
+                    className="relative group rounded-xl border border-slate-200 bg-white p-2 flex items-center gap-2 shadow-2xs hover:shadow-xs transition-shadow"
+                  >
+                    <div
+                      className="h-10 w-10 rounded-lg bg-slate-100 overflow-hidden shrink-0 cursor-pointer flex items-center justify-center border border-slate-100"
+                      onClick={() =>
+                        openDocumentPreview(
+                          item.url,
+                          item.name || `Payment Proof #${idx + 1}`,
+                          item.url.endsWith(".pdf") ? "pdf" : "image"
+                        )
+                      }
+                      title="Click to preview"
+                    >
+                      {item.url.endsWith(".pdf") ? (
+                        <FileText className="h-5 w-5 text-red-500" />
+                      ) : (
+                        <img
+                          src={item.url}
+                          alt={`Receipt ${idx + 1}`}
+                          className="h-full w-full object-cover"
+                        />
+                      )}
+                    </div>
+                    <div className="flex-1 min-w-0 pr-5">
+                      <p className="text-[11px] font-medium text-slate-800 truncate" title={item.name}>
+                        {item.name || `Receipt #${idx + 1}`}
+                      </p>
+                      <button
+                        type="button"
+                        onClick={() =>
+                          openDocumentPreview(
+                            item.url,
+                            item.name || `Payment Proof #${idx + 1}`,
+                            item.url.endsWith(".pdf") ? "pdf" : "image"
+                          )
+                        }
+                        className="text-[10px] text-[#F0944D] hover:underline flex items-center gap-1 cursor-pointer"
+                      >
+                        <Eye className="h-2.5 w-2.5" />
+                        Preview
+                      </button>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => handleRemoveScreenshot(idx)}
+                      className="absolute top-1.5 right-1.5 h-5 w-5 rounded-full bg-slate-100 hover:bg-rose-100 text-slate-400 hover:text-rose-600 flex items-center justify-center transition-colors cursor-pointer"
+                      title="Remove receipt"
+                    >
+                      <X className="h-3 w-3" />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
 
           {/* Remarks */}

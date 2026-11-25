@@ -8,7 +8,9 @@ import {
   ChatParticipantRole,
   TrackerStatus,
   GroupSendMessagePermission,
+  SystemRole,
 } from "@prisma/client";
+import { getOrCreateSuperAdminAiConversation, AI_AGENT_EMAIL } from "@/lib/ai/agent";
 
 export interface ActionResult<T = unknown> {
   success: boolean;
@@ -43,6 +45,8 @@ export interface ChatAttachmentItem {
 export interface ConversationSummary {
   id: string;
   isGroup: boolean;
+  isAiAgent?: boolean;
+  isPinned?: boolean;
   name: string;
   avatarUrl?: string | null;
   sendMessagePermission?: GroupSendMessagePermission;
@@ -79,6 +83,7 @@ export interface MessageItem {
   attachmentSize: number | null;
   attachmentMimeType: string | null;
   attachments?: ChatAttachmentItem[];
+  metadata?: any;
   createdAt: string;
   isSelf: boolean;
   status: "SENT" | "DELIVERED" | "READ";
@@ -126,6 +131,13 @@ export async function getConversationsAction(): Promise<ActionResult<Conversatio
 
     const todayDate = new Date();
     todayDate.setUTCHours(0, 0, 0, 0);
+
+    const isSuperAdmin = user.systemRole === SystemRole.SUPER_ADMIN;
+
+    // Ensure dedicated BharatEdge AI Conversation exists for Super Admin
+    if (isSuperAdmin) {
+      await getOrCreateSuperAdminAiConversation(user.id);
+    }
 
     const participantRecords = await db.chatParticipant.findMany({
       where: { employeeId: user.id },
@@ -181,9 +193,13 @@ export async function getConversationsAction(): Promise<ActionResult<Conversatio
     const nowMs = Date.now();
 
     // Compute unread counts & online presence in parallel
-    const summaries: ConversationSummary[] = await Promise.all(
+    const summaries = await Promise.all(
       participantRecords.map(async (record) => {
         const conv = record.conversation;
+        if (conv.isAiAgent && !isSuperAdmin) {
+          return null;
+        }
+
         const lastRead = record.lastReadAt;
 
         const unreadCount = await db.chatMessage.count({
@@ -230,7 +246,10 @@ export async function getConversationsAction(): Promise<ActionResult<Conversatio
         let title = conv.name || "Chat";
         let subtitle = "";
 
-        if (conv.isGroup) {
+        if (conv.isAiAgent) {
+          title = "BharatEdge AI";
+          subtitle = "Executive AI Copilot • 24/7 Live Intelligence";
+        } else if (conv.isGroup) {
           title = conv.name || "Group Discussion";
           subtitle =
             onlineCount > 0
@@ -246,6 +265,8 @@ export async function getConversationsAction(): Promise<ActionResult<Conversatio
         return {
           id: conv.id,
           isGroup: conv.isGroup,
+          isAiAgent: conv.isAiAgent,
+          isPinned: conv.isAiAgent,
           name: title,
           avatarUrl: conv.isGroup ? conv.avatarUrl : (other?.avatarUrl || null),
           sendMessagePermission: conv.sendMessagePermission || "ALL_MEMBERS",
@@ -271,7 +292,11 @@ export async function getConversationsAction(): Promise<ActionResult<Conversatio
       })
     );
 
-    return { success: true, data: summaries };
+    const activeSummaries = (summaries.filter(Boolean) as ConversationSummary[]).sort(
+      (a, b) => (b.isPinned ? 1 : 0) - (a.isPinned ? 1 : 0)
+    );
+
+    return { success: true, data: activeSummaries };
   } catch (error) {
     console.error("Error retrieving chat conversations:", error);
     return {
@@ -427,6 +452,15 @@ export async function getMessagesAction(
     // 403 Security Check
     await assertConversationMembership(conversationId, user.id);
 
+    const convRecord = await db.chatConversation.findUnique({
+      where: { id: conversationId },
+      select: { isAiAgent: true },
+    });
+
+    if (convRecord?.isAiAgent && user.systemRole !== SystemRole.SUPER_ADMIN) {
+      return { success: false, error: "403 Forbidden. Executive AI is exclusively for Super Admin." };
+    }
+
     // Update lastReadAt for current user
     await db.chatParticipant.update({
       where: {
@@ -569,6 +603,7 @@ export async function getMessagesAction(
         attachmentSize: m.attachmentSize,
         attachmentMimeType: m.attachmentMimeType,
         attachments: parsedAttachments,
+        metadata: m.metadata,
         createdAt: m.createdAt.toISOString(),
         isSelf,
         status,
@@ -638,6 +673,15 @@ export async function sendMessageAction(data: {
 
     // 403 Security Check
     await assertConversationMembership(conversationId, user.id);
+
+    const convRecord = await db.chatConversation.findUnique({
+      where: { id: conversationId },
+      select: { isAiAgent: true },
+    });
+
+    if (convRecord?.isAiAgent && user.systemRole !== SystemRole.SUPER_ADMIN) {
+      return { success: false, error: "403 Forbidden. Executive AI is exclusively for Super Admin." };
+    }
 
     // Group-level & member-level messaging permissions enforcement
     const conv = await db.chatConversation.findUnique({
@@ -851,6 +895,7 @@ export async function searchEmployeesForChatAction(
       where: {
         status: "ACTIVE",
         id: { not: user.id },
+        workEmail: { not: AI_AGENT_EMAIL },
         ...(q
           ? {
               OR: [

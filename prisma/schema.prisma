@@ -446,6 +446,11 @@ model PaymentRecord {
   transactionRef String?
   screenshotUrl  String?
   screenshotKey  String?
+  screenshotUrls String[]                  @default([])
+  aiVerificationStatus AiVerificationStatus @default(PENDING)
+  aiDetectedAmount     Decimal?             @db.Decimal(12, 2)
+  aiAuditSummary       String?              @db.Text
+  aiAuditedAt          DateTime?
   paymentDate    DateTime                  @default(now()) @db.Date
   remarks        String?                   @db.Text
   isConvertedToDeal Boolean                  @default(false)
@@ -1006,11 +1011,20 @@ enum ChatParticipantRole {
   MEMBER
 }
 
+enum AiVerificationStatus {
+  PENDING
+  MATCHED
+  MISMATCH
+  UNREADABLE
+}
+
 enum ChatMessageType {
   TEXT
   IMAGE
   DOCUMENT
   FILE
+  AI_REPORT
+  AI_ALERT
 }
 
 enum GroupSendMessagePermission {
@@ -1021,6 +1035,7 @@ enum GroupSendMessagePermission {
 model ChatConversation {
   id                    String                     @id @default(uuid())
   isGroup               Boolean                    @default(false)
+  isAiAgent             Boolean                    @default(false)
   name                  String?
   avatarUrl             String?
   createdById           String
@@ -1067,6 +1082,7 @@ model ChatMessage {
   attachmentSize     Int?
   attachmentMimeType String?
   attachments        Json?
+  metadata           Json?
   isDeleted          Boolean          @default(false)
   reactions          ChatMessageReaction[]
 
@@ -1092,5 +1108,18 @@ model ChatMessageReaction {
   @@index([employeeId])
   @@map("chat_message_reactions")
 }
+
+model AiCronLog {
+  id          String   @id @default(uuid())
+  scheduleKey String
+  date        String
+  status      String   @default("SUCCESS")
+  details     Json?
+  createdAt   DateTime @default(now())
+
+  @@unique([scheduleKey, date])
+  @@map("ai_cron_logs")
+}
+
 
 

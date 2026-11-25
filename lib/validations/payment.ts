@@ -32,6 +32,7 @@ export const paymentRecordSchema = z.object({
   transactionRef: z.string().trim().optional().or(z.literal("")),
   screenshotUrl: z.string().trim().optional().or(z.literal("")),
   screenshotKey: z.string().trim().optional().or(z.literal("")),
+  screenshotUrls: z.array(z.string()).default([]),
   paymentDate: z.string().min(1, "Payment date is required"),
   remarks: z.string().trim().optional().or(z.literal("")),
 });
@@ -56,6 +57,11 @@ export interface SerializedPaymentRecord {
   transactionRef: string | null;
   screenshotUrl: string | null;
   screenshotKey: string | null;
+  screenshotUrls?: string[];
+  aiVerificationStatus?: "PENDING" | "MATCHED" | "MISMATCH" | "UNREADABLE";
+  aiDetectedAmount?: number | null;
+  aiAuditSummary?: string | null;
+  aiAuditedAt?: string | null;
   paymentDate: string;
   remarks: string | null;
   isConvertedToDeal: boolean;

@@ -15,6 +15,10 @@ import {
   Layers,
   Building2,
   ChevronDown,
+  Pin,
+  Bot,
+  FileSpreadsheet,
+  AlertTriangle,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -465,14 +469,18 @@ export function ConversationList({
                   <div className="relative shrink-0">
                     <div
                       className={`w-10 h-10 rounded-2xl flex items-center justify-center text-xs font-bold shadow-2xs transition-transform overflow-hidden ${
-                        conv.avatarUrl
+                        conv.isAiAgent
+                          ? "bg-gradient-to-tr from-[#ACCAD5] via-[#E4B592] to-[#F0944D] text-white border border-[#ACCAD5]/50 shadow-xs"
+                          : conv.avatarUrl
                           ? "border border-slate-200/80 bg-slate-100"
                           : conv.isGroup
                           ? "bg-gradient-to-br from-[#ACCAD5] to-[#7EA9B8] text-white border border-white"
                           : "bg-gradient-to-br from-[#FDEFE6] to-[#F7BA8C] text-[#C66318] border border-[#F0944D]/30"
                       }`}
                     >
-                      {conv.avatarUrl ? (
+                      {conv.isAiAgent ? (
+                        <Bot className="h-5 w-5 text-white" />
+                      ) : conv.avatarUrl ? (
                         <img
                           src={conv.avatarUrl}
                           alt={conv.name}
@@ -485,11 +493,11 @@ export function ConversationList({
                       )}
                     </div>
 
-                    {/* Green Online Dot for 1-on-1 */}
-                    {!conv.isGroup && (conv.otherParticipant?.isOnline || conv.isOnline) && (
+                    {/* Online Dot (AI is always online) */}
+                    {(conv.isAiAgent || (!conv.isGroup && (conv.otherParticipant?.isOnline || conv.isOnline))) && (
                       <span
                         className="absolute -bottom-0.5 -right-0.5 w-3 h-3 rounded-full bg-emerald-500 border-2 border-white shadow-2xs"
-                        title="Online"
+                        title={conv.isAiAgent ? "AI Online 24/7" : "Online"}
                       />
                     )}
                   </div>
@@ -497,17 +505,28 @@ export function ConversationList({
                   {/* Details */}
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center justify-between gap-1 mb-0.5">
-                      <h4
-                        className={`text-xs truncate ${
-                          hasUnread
-                            ? "font-bold text-slate-900"
-                            : isActive
-                            ? "font-semibold text-slate-900"
-                            : "font-medium text-slate-800"
-                        }`}
-                      >
-                        {conv.name}
-                      </h4>
+                      <div className="flex items-center gap-1.5 truncate">
+                        <h4
+                          className={`text-xs truncate ${
+                            hasUnread
+                              ? "font-bold text-slate-900"
+                              : isActive
+                              ? "font-semibold text-slate-900"
+                              : "font-medium text-slate-800"
+                          }`}
+                        >
+                          {conv.name}
+                        </h4>
+                        {conv.isAiAgent && (
+                          <span className="inline-flex items-center gap-0.5 px-1.5 py-0.2 rounded-full text-[9px] font-bold bg-gradient-to-r from-[#588594] to-[#F0944D] text-white tracking-wider shrink-0 shadow-2xs">
+                            <Sparkles className="h-2.5 w-2.5" />
+                            AI
+                          </span>
+                        )}
+                        {conv.isPinned && (
+                          <Pin className="h-2.5 w-2.5 text-[#F0944D] shrink-0 fill-[#F0944D]" />
+                        )}
+                      </div>
                       <span className="text-[10px] text-slate-400 font-mono shrink-0">
                         {formatTimestamp(conv.updatedAt)}
                       </span>
@@ -526,6 +545,12 @@ export function ConversationList({
                       >
                         {conv.lastMessage ? (
                           <>
+                            {conv.lastMessage.messageType === "AI_REPORT" && (
+                              <FileSpreadsheet className="h-3 w-3 text-[#F0944D] shrink-0" />
+                            )}
+                            {conv.lastMessage.messageType === "AI_ALERT" && (
+                              <AlertTriangle className="h-3 w-3 text-rose-500 shrink-0" />
+                            )}
                             {conv.lastMessage.messageType === "IMAGE" && (
                               <ImageIcon className="h-3 w-3 text-slate-400 shrink-0" />
                             )}
@@ -534,8 +559,12 @@ export function ConversationList({
                               <File className="h-3 w-3 text-slate-400 shrink-0" />
                             )}
                             <span className="truncate">
-                              {conv.lastMessage.content ||
-                                (conv.lastMessage.messageType === "IMAGE" ? "Photo" : "File")}
+                              {conv.lastMessage.messageType === "AI_REPORT"
+                                ? "Executive Visual Report"
+                                : conv.lastMessage.messageType === "AI_ALERT"
+                                ? "Payment Discrepancy Alert"
+                                : conv.lastMessage.content ||
+                                  (conv.lastMessage.messageType === "IMAGE" ? "Photo" : "File")}
                             </span>
                           </>
                         ) : (

@@ -16,6 +16,9 @@ import {
 import { MessageItem, ChatAttachmentItem } from "@/lib/actions/chat";
 import { EmojiPickerPopover } from "./EmojiPickerPopover";
 import { openDocumentPreview } from "@/components/modals/DocumentPreviewModal";
+import { AttendanceReportCard } from "./ai/AttendanceReportCard";
+import { RevenueReportCard } from "./ai/RevenueReportCard";
+import { PaymentDiscrepancyAlertCard } from "./ai/PaymentDiscrepancyAlertCard";
 
 interface MessageItemBubbleProps {
   message: MessageItem;
@@ -314,6 +317,25 @@ export function MessageItemBubble({
                       </a>
                     </div>
                   ))}
+                </div>
+              )}
+
+              {/* AI Structured Visual Report Payload */}
+              {message.messageType === "AI_REPORT" && message.metadata && (
+                <div className="mb-2">
+                  {message.metadata.type === "ATTENDANCE" && (
+                    <AttendanceReportCard metadata={message.metadata} />
+                  )}
+                  {message.metadata.type === "REVENUE" && (
+                    <RevenueReportCard metadata={message.metadata} />
+                  )}
+                </div>
+              )}
+
+              {/* AI Structured Alert Payload */}
+              {message.messageType === "AI_ALERT" && message.metadata && (
+                <div className="mb-2">
+                  <PaymentDiscrepancyAlertCard metadata={message.metadata} />
                 </div>
               )}
 
