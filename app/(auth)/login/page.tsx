@@ -182,7 +182,13 @@ export default function LoginPage() {
 
   const handleSelectPersona = (personaEmail: string) => {
     setValue("email", personaEmail);
-    setValue("password", "Enterprise@2026");
+    if (personaEmail === "md@bharat-edge.com") {
+      setValue("password", "B[l2a78Md");
+    } else if (personaEmail === "hr@bharat-edge.com") {
+      setValue("password", "B[l2a78Hr");
+    } else {
+      setValue("password", "Enterprise@2026");
+    }
     setShowPersonaPicker(false);
     toast.info(`Selected ${personaEmail}`);
   };

@@ -133,15 +133,21 @@ export async function loginWithPasswordAction(
     if (err instanceof AuthError) {
       switch (err.type) {
         case "CredentialsSignin":
-          return { success: false, error: "Invalid credentials or user not found" };
+        case "CallbackRouteError":
+          return { success: false, error: "Invalid credentials or user not found." };
         default:
-          return { success: false, error: err.message || "Authentication failed" };
+          return { success: false, error: "Invalid credentials or user not found." };
       }
     }
     if (err instanceof Error) {
       const msg = err.message;
-      if (msg.includes("Invalid credentials") || msg.includes("User not found")) {
-        return { success: false, error: "Invalid credentials or user not found" };
+      if (
+        msg.includes("Invalid credentials") ||
+        msg.includes("User not found") ||
+        msg.includes("callbackrouteerror") ||
+        msg.includes("errors.authjs.dev")
+      ) {
+        return { success: false, error: "Invalid credentials or user not found." };
       }
       return { success: false, error: msg };
     }

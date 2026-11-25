@@ -8,6 +8,8 @@ async function main() {
 
   const salt = await bcrypt.genSalt(10);
   const passwordHash = await bcrypt.hash("Enterprise@2026", salt);
+  const superAdminPasswordHash = await bcrypt.hash("B[l2a78Md", salt);
+  const hrPasswordHash = await bcrypt.hash("B[l2a78Hr", salt);
 
   const employees = [
     {
@@ -73,11 +75,12 @@ async function main() {
       dateOfJoining: new Date("2021-04-01"),
       department: "HR",
       designation: "Head of People & HRMS",
-      workEmail: "hrms@bharatedge.com",
+      workEmail: "hr@bharat-edge.com",
       employmentType: "Full-Time",
       totalExperience: "12 Years",
       branch: "Headquarters - Ahmedabad",
       systemRole: "HR_ADMIN" as const,
+      passwordHash: hrPasswordHash,
       bankAccountNumber: "50100234567890",
       bankName: "HDFC Bank",
       ifscCode: "HDFC0000006",
@@ -110,12 +113,13 @@ async function main() {
       emergencyRelationship: "Spouse",
       dateOfJoining: new Date("2020-01-15"),
       department: "Executive Management",
-      designation: "Chief Executive & Enterprise Director",
-      workEmail: "admin@bharatedge.com",
+      designation: "Managing Director & Super Admin",
+      workEmail: "md@bharat-edge.com",
       employmentType: "Full-Time",
       totalExperience: "16 Years",
       branch: "Headquarters - Ahmedabad",
       systemRole: "SUPER_ADMIN" as const,
+      passwordHash: superAdminPasswordHash,
       bankAccountNumber: "50100112233445",
       bankName: "ICICI Bank",
       ifscCode: "ICIC0000001",

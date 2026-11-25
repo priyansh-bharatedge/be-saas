@@ -12,10 +12,17 @@ export interface EnterpriseUserSeed {
 export const ENTERPRISE_SEED_USERS: EnterpriseUserSeed[] = [
   {
     id: "usr-admin-01",
-    email: "admin@bharatedge.com",
+    email: "md@bharat-edge.com",
     name: "Vikramaditya Sharma",
     role: Role.Admin,
-    jobTitle: "Chief Executive & Enterprise Admin",
+    jobTitle: "Managing Director & Super Admin",
+  },
+  {
+    id: "usr-hrms-03",
+    email: "hr@bharat-edge.com",
+    name: "Rajesh Iyer",
+    role: Role.HRMS,
+    jobTitle: "Head of People & HRMS",
   },
   {
     id: "usr-crm-02",
@@ -25,25 +32,11 @@ export const ENTERPRISE_SEED_USERS: EnterpriseUserSeed[] = [
     jobTitle: "Head of CRM & Strategic Deals",
   },
   {
-    id: "usr-hrms-03",
-    email: "hrms@bharatedge.com",
-    name: "Rajesh Iyer",
-    role: Role.HRMS,
-    jobTitle: "Head of People & HRMS",
-  },
-  {
     id: "usr-support-04",
     email: "support@bharatedge.com",
     name: "Pooja Deshmukh",
     role: Role.Support,
     jobTitle: "Support Operations Lead",
-  },
-  {
-    id: "usr-superadmin-05",
-    email: "superadmin@bharatedge.com",
-    name: "Super Administrator",
-    role: Role.Admin,
-    jobTitle: "Enterprise Super Admin",
   },
   {
     id: "usr-accounts-06",
