@@ -8,6 +8,7 @@ import { getCurrentUser } from "@/lib/auth/session";
 import { getScopeFilter, canCreateEmployee } from "@/lib/auth/rbac";
 import { createNotification, notifyHRAdmins } from "@/lib/actions/notifications";
 import bcrypt from "bcryptjs";
+import { decryptPassword } from "@/lib/security/encryption";
 
 export interface ActionResult<T = unknown> {
   success: boolean;
@@ -72,10 +73,6 @@ export async function createEmployeeAction(
     const dob = new Date(data.dateOfBirth);
     const doj = new Date(data.dateOfJoining);
 
-    // Hash default enterprise password for instant login capability
-    const salt = await bcrypt.genSalt(10);
-    const passwordHash = await bcrypt.hash("Enterprise@2026", salt);
-
     // Derive gateway access role based on department or hierarchy
     let systemAuthRole: Role = Role.HRMS;
     if (data.systemRole === SystemRole.SUPER_ADMIN) {
@@ -100,8 +97,10 @@ export async function createEmployeeAction(
 
     const employee = await db.employee.create({
       data: {
-        // Authentication Credentials (Consolidated Unified Model)
-        passwordHash,
+        // Authentication Credentials (First-time password setup required on first OTP login)
+        passwordHash: null,
+        isPasswordSet: false,
+        encryptedPassword: null,
         role: systemAuthRole,
         phone: data.contactNumber.trim(),
         jobTitle: data.designation.trim(),
@@ -302,15 +301,29 @@ export async function getEmployeesAction(params: GetEmployeesParams = {}) {
       }),
     ]);
 
+    const isSuperAdmin = user.systemRole === "SUPER_ADMIN";
+
     // Serialize Decimal and Date fields to plain JSON-compatible types for Next.js Client Components
-    const employees = rawEmployees.map((emp) => ({
-      ...emp,
-      monthlyTarget: emp.monthlyTarget != null ? Number(emp.monthlyTarget) : null,
-      dateOfBirth: emp.dateOfBirth instanceof Date ? emp.dateOfBirth.toISOString() : emp.dateOfBirth,
-      dateOfJoining: emp.dateOfJoining instanceof Date ? emp.dateOfJoining.toISOString() : emp.dateOfJoining,
-      createdAt: emp.createdAt instanceof Date ? emp.createdAt.toISOString() : emp.createdAt,
-      updatedAt: emp.updatedAt instanceof Date ? emp.updatedAt.toISOString() : emp.updatedAt,
-    }));
+    const employees = rawEmployees.map((emp) => {
+      // Strictly omit raw credentials from response payload
+      const { passwordHash, encryptedPassword, otp, otpExpiry, otpAttempts, ...safeEmp } = emp;
+
+      let visiblePassword: string | null = null;
+      if (isSuperAdmin && emp.isPasswordSet && emp.encryptedPassword) {
+        visiblePassword = decryptPassword(emp.encryptedPassword);
+      }
+
+      return {
+        ...safeEmp,
+        isPasswordSet: emp.isPasswordSet,
+        visiblePassword: isSuperAdmin ? visiblePassword : null,
+        monthlyTarget: emp.monthlyTarget != null ? Number(emp.monthlyTarget) : null,
+        dateOfBirth: emp.dateOfBirth instanceof Date ? emp.dateOfBirth.toISOString() : emp.dateOfBirth,
+        dateOfJoining: emp.dateOfJoining instanceof Date ? emp.dateOfJoining.toISOString() : emp.dateOfJoining,
+        createdAt: emp.createdAt instanceof Date ? emp.createdAt.toISOString() : emp.createdAt,
+        updatedAt: emp.updatedAt instanceof Date ? emp.updatedAt.toISOString() : emp.updatedAt,
+      };
+    });
 
     return {
       success: true,
@@ -401,8 +414,18 @@ export async function getEmployeeByIdAction(id: string) {
       return { success: false, error: "Employee record not found." };
     }
 
+    const isSuperAdmin = user.systemRole === "SUPER_ADMIN";
+    const { passwordHash, encryptedPassword, otp, otpExpiry, otpAttempts, ...safeEmployee } = employee;
+
+    let visiblePassword: string | null = null;
+    if (isSuperAdmin && employee.isPasswordSet && employee.encryptedPassword) {
+      visiblePassword = decryptPassword(employee.encryptedPassword);
+    }
+
     const serializedEmployee = {
-      ...employee,
+      ...safeEmployee,
+      isPasswordSet: employee.isPasswordSet,
+      visiblePassword: isSuperAdmin ? visiblePassword : null,
       monthlyTarget: employee.monthlyTarget != null ? Number(employee.monthlyTarget) : null,
       dateOfBirth: employee.dateOfBirth instanceof Date ? employee.dateOfBirth.toISOString() : employee.dateOfBirth,
       dateOfJoining: employee.dateOfJoining instanceof Date ? employee.dateOfJoining.toISOString() : employee.dateOfJoining,

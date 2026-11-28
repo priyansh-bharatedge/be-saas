@@ -160,7 +160,7 @@ export function EmojiPickerPopover({
     }
   }, [isOpen]);
 
-  // Handle outside click
+  // Handle outside click & custom close event
   useEffect(() => {
     if (!isOpen) return;
 
@@ -170,9 +170,15 @@ export function EmojiPickerPopover({
       }
     };
 
+    const handleCustomClose = () => {
+      onClose();
+    };
+
     document.addEventListener("mousedown", handleClickOutside);
+    window.addEventListener("chat:close-emoji-picker", handleCustomClose);
     return () => {
       document.removeEventListener("mousedown", handleClickOutside);
+      window.removeEventListener("chat:close-emoji-picker", handleCustomClose);
     };
   }, [isOpen, onClose]);
 
@@ -201,6 +207,7 @@ export function EmojiPickerPopover({
   return (
     <div
       ref={containerRef}
+      data-emoji-picker="true"
       className={`absolute z-50 w-72 sm:w-80 rounded-2xl bg-white/95 backdrop-blur-xl border border-slate-200/90 shadow-[0_16px_40px_rgba(0,0,0,0.12)] p-3 flex flex-col gap-2.5 animate-in fade-in zoom-in-95 duration-150 select-none ${positionClasses} ${className}`}
       onClick={(e) => e.stopPropagation()}
     >

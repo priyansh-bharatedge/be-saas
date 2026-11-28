@@ -209,6 +209,68 @@ All tasks in this document represent the definitive blueprint for engineering Bh
 
 ---
 
+## Advanced HRMS Suite — 3-Phase Master Roadmap
+
+### Phase 1: Leave Management Overhaul, Attendance Regularization & Dynamic Workflow Engine (Completed)
+- [x] **Leave Management Overhaul (Strictly 2 Leave Types)**:
+  - [x] Refactor `LeaveType` enum, `LeaveBalance`, and `LeaveRequest` schema for `PAID_LEAVE` and `SHORT_LEAVE`.
+  - [x] `PAID_LEAVE`: 12 days/yr quota, dynamically accruing 1 day/month; automatic deduction upon approval and restoration on cancellation/rejection.
+  - [x] `SHORT_LEAVE`: Max 2 requests/month, max 3.0 total hours/month, max 1.5 hours per single request; frontend + backend Zod validation on duration and limits; live remaining count and hours display.
+  - [x] HR Admin Balance Adjustment: Dedicated "Adjust Leave Balance" control in HRMS Employee Directory / Edit Employee modal with audit reason and logs.
+  - [x] Update `components/leave/ApplyLeaveModal.tsx`, `app/(dashboard)/hrms/leave/page.tsx`, and `lib/actions/leave.ts`.
+- [x] **Attendance Regularization (AR) Requests**:
+  - [x] `AttendanceRegularization` Prisma model linked to `Employee` and `AttendanceRecord` (date, requestedClockIn, requestedClockOut, regularizationType, reason, attachmentUrl, status).
+  - [x] Employee request UI in `/hrms/attendance` with R2 receipt attachment support.
+  - [x] Approval workflow routing: automatically updates or creates `AttendanceRecord` on approval with recalculated active hours.
+- [x] **Dynamic HRMS Workflow Engine (`/hrms/workflows` — HR Admin Only)**:
+  - [x] Strict Access: Restricted to HR Admin / HR HOD / SUPER_ADMIN (403 Forbidden on API).
+  - [x] Prisma models: `HrmsWorkflow` and `HrmsWorkflowStep` (module enum, triggerAction, departmentScope, intimationRecipients, approvers).
+  - [x] Runtime Execution Engine (`lib/hrms/workflow-engine.ts`): Automated evaluation on record create/update, firing intimation notifications and routing sequential approval tasks.
+  - [x] Visual UI & AI Workflow Helper at `/hrms/workflows` with plain English rule translation.
+- [x] **Verification**: Compile cleanly with `npx tsc --noEmit` and database migration.
+
+---
+
+### Phase 2: Core HRMS Operations Modules (Completed)
+- [x] **Reimbursement Requests (`/hrms/reimbursements`)**:
+  - [x] Models, expense categories, amount, R2 receipts, workflow integration, PENDING/APPROVED/REJECTED/PAID lifecycle.
+  - [x] Employee claim submission and HR Admin review desk.
+- [x] **Resignation & Exit Process (`/hrms/resignations` & `/hrms/lifecycle`)**:
+  - [x] Resignation request filing with workflow approval.
+  - [x] Onboarding & Exit lifecycle checklists with progress tracking and task assignment.
+- [x] **Performance & Appraisals (`/hrms/performance`)**:
+  - [x] Appraisal cycles, self-review, manager rating, HR remarks, automatic 30-day and overdue flags.
+- [x] **Payroll & Monthly Salary Tracker (`/hrms/payroll`)**:
+  - [x] Monthly salary records, base, deductions, net payable, payslip download, prior-month pending detection.
+- [x] **HRMS Helpdesk (`/hrms/helpdesk`)**:
+  - [x] Department-targeted internal ticketing, categories, priority, R2 attachments, comment threads, workflow routing.
+- [x] **Employee Surveys (`/hrms/surveys`)**:
+  - [x] Pulse surveys, question builder, employee response submission, aggregated analytics.
+- [x] **Verification**: Compile cleanly with `npx tsc --noEmit`.
+
+---
+
+### Phase 3: Unified HR Admin "Inbox" (`/hrms/inbox`) (Completed)
+- [x] **Sidebar Integration**:
+  - [x] Dedicated "Inbox" item at the top of HRMS sidebar with real-time pending badge count.
+- [x] **10-Category Consolidated Action Center UI**:
+  - [x] 1. Pending Leaves (Paid & Short Leave with live remaining balances inline)
+  - [x] 2. Pending Approvals (Active workflow-assigned approval tasks)
+  - [x] 3. Attendance Regularization Requests (Original vs. requested hours & reason)
+  - [x] 4. Pending Reimbursements (Amount & inline R2 receipt preview)
+  - [x] 5. Resignation Requests
+  - [x] 6. Helpdesk Requests
+  - [x] 7. Upcoming & Overdue Appraisals
+  - [x] 8. Upcoming Holidays (Next 30 days)
+  - [x] 9. Onboarding & Exit Checklists
+  - [x] 10. Prior Month Pending Salaries
+- [x] **One-Click Inline Actions & AI Daily HR Brief**:
+  - [x] Quick Approve/Reject with comments and Open Record modal.
+  - [x] Deterministic "AI Daily HR Brief" summarizing urgent blockers.
+- [x] **Verification**: Full production build verification (`npm run build`).
+
+---
+
 ## Cloudflare R2 Credentials Checklist (.env)
 To connect your production Cloudflare R2 bucket for document storage, ensure the following keys are added to `.env`:
 ```env

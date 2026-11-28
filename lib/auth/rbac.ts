@@ -618,6 +618,32 @@ export function canCreateEmployee(user: AuthUser | null): boolean {
 }
 
 /**
+ * Checks whether the user has HR Administrator or Super Admin authority across HRMS.
+ * True for:
+ * - Super Admin (Role.Admin or SystemRole.SUPER_ADMIN)
+ * - HR Admin (SystemRole.HR_ADMIN)
+ * - HR Department HOD / HR Members
+ */
+export function isHrAdminRole(user: AuthUser | null): boolean {
+  if (!user || !user.id) return false;
+
+  const isSuperAdmin =
+    user.role === Role.Admin || user.systemRole === SystemRole.SUPER_ADMIN;
+  if (isSuperAdmin) return true;
+
+  const isHrAdmin = user.systemRole === SystemRole.HR_ADMIN;
+  if (isHrAdmin) return true;
+
+  const dept = (user.department || "").trim().toLowerCase();
+  const isHrDept = dept === "hr" || dept === "human resources" || dept.includes("hr");
+  if (isHrDept && (user.systemRole === SystemRole.ADMIN_HOD || user.role === Role.HRMS)) {
+    return true;
+  }
+
+  return false;
+}
+
+/**
  * Validates whether the user has permission to modify or delete a record based on ownership/scoping
  */
 export function canModifyRecord(

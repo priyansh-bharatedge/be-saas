@@ -1,10 +1,10 @@
 "use client";
 
-import { LeaveType } from "@prisma/client";
-import { Umbrella, Stethoscope, Briefcase, Calendar } from "lucide-react";
+import { SunMedium, Clock, Calendar, CheckCircle2, AlertCircle } from "lucide-react";
+import { cn } from "@/lib/utils";
 
 interface LeaveBalanceItem {
-  leaveType: LeaveType;
+  leaveType: string;
   allocatedDays: number;
   usedDays: number;
   remainingDays: number;
@@ -13,95 +13,200 @@ interface LeaveBalanceItem {
 
 interface LeaveBalanceCardsProps {
   balances: LeaveBalanceItem[];
+  paidLeaveAccrual?: {
+    totalQuota: number;
+    accruedDays: number;
+    usedDays: number;
+    remainingDays: number;
+  };
+  shortLeaveMonthly?: {
+    maxMonthlyCount: number;
+    usedCount: number;
+    remainingCount: number;
+    maxMonthlyHours: number;
+    usedHours: number;
+    remainingHours: number;
+  };
 }
 
-export default function LeaveBalanceCards({ balances }: LeaveBalanceCardsProps) {
-  const getCardConfig = (type: LeaveType) => {
-    switch (type) {
-      case LeaveType.CASUAL:
-        return {
-          title: "Casual Leave (CL)",
-          subtitle: "Personal engagements & family",
-          icon: Umbrella,
-          badgeColor: "bg-[#EBF3F6] border-[#ACCAD5]/60 text-[#3D6472]",
-          progressColor: "bg-[#588594]",
-        };
-      case LeaveType.SICK:
-        return {
-          title: "Sick Leave (SL)",
-          subtitle: "Medical care & recovery",
-          icon: Stethoscope,
-          badgeColor: "bg-[#FDEFE6] border-[#F0944D]/40 text-[#C66318]",
-          progressColor: "bg-[#F0944D]",
-        };
-      case LeaveType.EARNED:
-        return {
-          title: "Earned / Privilege (EL)",
-          subtitle: "Accrued annual vacation",
-          icon: Briefcase,
-          badgeColor: "bg-emerald-50 border-emerald-200 text-emerald-700",
-          progressColor: "bg-emerald-500",
-        };
-      default:
-        return {
-          title: `${type} Leave`,
-          subtitle: "Special allowance",
-          icon: Calendar,
-          badgeColor: "bg-slate-100 border-slate-200 text-slate-600",
-          progressColor: "bg-slate-500",
-        };
-    }
-  };
+export default function LeaveBalanceCards({
+  balances,
+  paidLeaveAccrual,
+  shortLeaveMonthly,
+}: LeaveBalanceCardsProps) {
+  // Current month name
+  const currentMonthName = new Date().toLocaleString("default", { month: "short" });
+  const currentYear = new Date().getFullYear();
+
+  // Paid Leave stats
+  const paidAllocated = paidLeaveAccrual?.totalQuota ?? 12;
+  const paidAccrued = paidLeaveAccrual?.accruedDays ?? Math.min(12, new Date().getMonth() + 1);
+  const paidUsed = paidLeaveAccrual?.usedDays ?? (balances.find((b) => b.leaveType === "PAID_LEAVE")?.usedDays ?? 0);
+  const paidRemaining = paidLeaveAccrual?.remainingDays ?? Math.max(0, paidAllocated - paidUsed);
+  const paidPercent = Math.min(100, Math.round((paidUsed / paidAllocated) * 100));
+
+  // Short Leave stats
+  const shortMaxCount = shortLeaveMonthly?.maxMonthlyCount ?? 2;
+  const shortUsedCount = shortLeaveMonthly?.usedCount ?? 0;
+  const shortRemainingCount = shortLeaveMonthly?.remainingCount ?? Math.max(0, shortMaxCount - shortUsedCount);
+
+  const shortMaxHours = shortLeaveMonthly?.maxMonthlyHours ?? 3.0;
+  const shortUsedHours = shortLeaveMonthly?.usedHours ?? 0;
+  const shortRemainingHours = shortLeaveMonthly?.remainingHours ?? Math.max(0, shortMaxHours - shortUsedHours);
+
+  const shortCountPercent = Math.min(100, Math.round((shortUsedCount / shortMaxCount) * 100));
+  const shortHoursPercent = Math.min(100, Math.round((shortUsedHours / shortMaxHours) * 100));
 
   return (
-    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-      {balances.map((b) => {
-        const config = getCardConfig(b.leaveType);
-        const Icon = config.icon;
-        const usedPercent = Math.min(100, Math.round((b.usedDays / (b.allocatedDays || 1)) * 100));
+    <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+      {/* -------------------------------------------------------------
+          CARD 1: PAID LEAVE (Annual Accrual - 12 days/yr, 1 day/mo)
+         ------------------------------------------------------------- */}
+      <div className="rounded-[32px] bg-white/75 backdrop-blur-2xl border border-white/90 shadow-[0_12px_40px_rgba(0,0,0,0.03)] p-6 sm:p-7 relative overflow-hidden flex flex-col justify-between">
+        {/* Ambient background blur */}
+        <div className="pointer-events-none absolute -top-10 -right-10 w-40 h-40 bg-[#F0944D]/15 rounded-full blur-3xl" />
 
-        return (
-          <div
-            key={b.leaveType}
-            className="rounded-[28px] bg-white/75 backdrop-blur-xl border border-white/80 shadow-[0_10px_35px_rgba(0,0,0,0.02)] p-6 transition-all hover:shadow-md"
-          >
-            <div className="flex items-center justify-between pb-3 border-b border-slate-100">
-              <div className="flex items-center gap-2.5">
-                <div className={`h-9 w-9 rounded-xl flex items-center justify-center ${config.badgeColor}`}>
-                  <Icon className="h-4 w-4" />
-                </div>
-                <div>
-                  <h4 className="text-sm font-semibold text-slate-900">{config.title}</h4>
-                  <p className="text-[11px] text-slate-400">{config.subtitle}</p>
-                </div>
+        <div>
+          {/* Card Header */}
+          <div className="flex items-center justify-between pb-3.5 border-b border-slate-100/90 relative z-10">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-2xl bg-orange-50 border border-orange-200/80 flex items-center justify-center text-[#E86C2C] shadow-xs">
+                <SunMedium className="w-5 h-5" />
               </div>
-              <span className="text-[11px] font-mono px-2.5 py-0.5 rounded-full bg-slate-100 text-slate-600 font-medium">
-                {b.year}
-              </span>
-            </div>
-
-            <div className="mt-4 flex items-baseline justify-between">
               <div>
-                <span className="text-3xl font-extrabold text-slate-900 tracking-tight">
-                  {b.remainingDays}
-                </span>
-                <span className="text-xs text-slate-400 font-medium ml-1.5">days left</span>
-              </div>
-              <div className="text-xs text-right text-slate-500">
-                <span className="font-semibold text-slate-700">{b.usedDays}</span> / {b.allocatedDays} used
+                <h3 className="text-base font-extrabold text-slate-900 tracking-tight">
+                  Paid Leave (PL)
+                </h3>
+                <p className="text-xs text-slate-500 font-medium">
+                  Annual quota of 12 days • Accrues 1 day / month
+                </p>
               </div>
             </div>
 
-            {/* Progress Bar */}
-            <div className="mt-3 w-full bg-slate-100 rounded-full h-2 overflow-hidden">
-              <div
-                className={`h-full rounded-full transition-all duration-500 ${config.progressColor}`}
-                style={{ width: `${usedPercent}%` }}
-              />
+            <span className="text-[10px] font-bold uppercase tracking-wider px-2.5 py-1 rounded-full bg-orange-100/70 text-[#C66318] border border-orange-200/60 font-mono">
+              Year {currentYear}
+            </span>
+          </div>
+
+          {/* Remaining Counter */}
+          <div className="mt-5 flex items-baseline justify-between relative z-10">
+            <div>
+              <div className="flex items-baseline gap-1.5">
+                <span className="text-4xl font-black text-slate-900 tracking-tight">
+                  {paidRemaining}
+                </span>
+                <span className="text-sm font-bold text-slate-400">/ {paidAllocated} days remaining</span>
+              </div>
+              <div className="text-xs text-emerald-600 font-semibold mt-1 flex items-center gap-1">
+                <CheckCircle2 className="w-3.5 h-3.5" />
+                <span>Accrued to date: {paidAccrued} days ({currentMonthName})</span>
+              </div>
+            </div>
+
+            <div className="text-right">
+              <span className="text-xs text-slate-500 font-medium block">Utilized</span>
+              <span className="text-lg font-black text-slate-800">{paidUsed} days</span>
             </div>
           </div>
-        );
-      })}
+        </div>
+
+        {/* Progress & Micro-stats */}
+        <div className="mt-6 pt-3 border-t border-slate-100/80 relative z-10 space-y-2">
+          <div className="flex items-center justify-between text-xs font-semibold text-slate-500">
+            <span>Deduction upon approval</span>
+            <span>{paidPercent}% consumed</span>
+          </div>
+          <div className="h-2 w-full bg-slate-100 rounded-full overflow-hidden">
+            <div
+              style={{ width: `${paidPercent}%` }}
+              className="h-full bg-gradient-to-r from-[#F0944D] to-[#E86C2C] rounded-full transition-all duration-700 ease-out"
+            />
+          </div>
+        </div>
+      </div>
+
+      {/* -------------------------------------------------------------
+          CARD 2: SHORT LEAVE (Monthly Quota - Max 2/mo, 3.0 hrs/mo, 1.5 hrs/req)
+         ------------------------------------------------------------- */}
+      <div className="rounded-[32px] bg-white/75 backdrop-blur-2xl border border-white/90 shadow-[0_12px_40px_rgba(0,0,0,0.03)] p-6 sm:p-7 relative overflow-hidden flex flex-col justify-between">
+        {/* Ambient background blur */}
+        <div className="pointer-events-none absolute -top-10 -right-10 w-40 h-40 bg-[#ACCAD5]/20 rounded-full blur-3xl" />
+
+        <div>
+          {/* Card Header */}
+          <div className="flex items-center justify-between pb-3.5 border-b border-slate-100/90 relative z-10">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-2xl bg-sky-50 border border-sky-200/80 flex items-center justify-center text-sky-600 shadow-xs">
+                <Clock className="w-5 h-5" />
+              </div>
+              <div>
+                <h3 className="text-base font-extrabold text-slate-900 tracking-tight">
+                  Short Leave (SL)
+                </h3>
+                <p className="text-xs text-slate-500 font-medium">
+                  Monthly quota • Max 1.5 hrs / single request
+                </p>
+              </div>
+            </div>
+
+            <span className="text-[10px] font-bold uppercase tracking-wider px-2.5 py-1 rounded-full bg-sky-100/70 text-sky-800 border border-sky-200/60 font-mono">
+              {currentMonthName} {currentYear}
+            </span>
+          </div>
+
+          {/* Dual Monthly Limits Counter: Count and Hours */}
+          <div className="mt-5 grid grid-cols-2 gap-4 relative z-10">
+            {/* Stat A: Monthly Requests Left */}
+            <div className="p-3.5 rounded-2xl bg-sky-50/50 border border-sky-100/80">
+              <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400 block">
+                Requests Left
+              </span>
+              <div className="flex items-baseline gap-1 mt-1">
+                <span className="text-3xl font-black text-slate-900 tracking-tight">
+                  {shortRemainingCount}
+                </span>
+                <span className="text-xs font-bold text-slate-500">/ {shortMaxCount} monthly</span>
+              </div>
+              <div className="mt-2 h-1.5 w-full bg-sky-200/60 rounded-full overflow-hidden">
+                <div
+                  style={{ width: `${shortCountPercent}%` }}
+                  className="h-full bg-sky-600 rounded-full transition-all duration-700"
+                />
+              </div>
+            </div>
+
+            {/* Stat B: Monthly Hours Left */}
+            <div className="p-3.5 rounded-2xl bg-sky-50/50 border border-sky-100/80">
+              <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400 block">
+                Hours Left
+              </span>
+              <div className="flex items-baseline gap-1 mt-1">
+                <span className="text-3xl font-black text-slate-900 tracking-tight">
+                  {shortRemainingHours.toFixed(1)}
+                </span>
+                <span className="text-xs font-bold text-slate-500">/ {shortMaxHours.toFixed(1)} hrs</span>
+              </div>
+              <div className="mt-2 h-1.5 w-full bg-sky-200/60 rounded-full overflow-hidden">
+                <div
+                  style={{ width: `${shortHoursPercent}%` }}
+                  className="h-full bg-sky-600 rounded-full transition-all duration-700"
+                />
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Footer Constraint Badge */}
+        <div className="mt-5 pt-3 border-t border-slate-100/80 relative z-10 flex items-center justify-between text-xs text-slate-500">
+          <span className="flex items-center gap-1.5 font-medium">
+            <span className="w-1.5 h-1.5 rounded-full bg-sky-500" />
+            Max 1.5 hrs per application
+          </span>
+          <span className="font-bold text-slate-700">
+            {shortUsedHours.toFixed(1)} hrs used ({shortUsedCount} reqs)
+          </span>
+        </div>
+      </div>
     </div>
   );
 }

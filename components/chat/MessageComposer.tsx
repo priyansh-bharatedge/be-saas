@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef, KeyboardEvent } from "react";
+import { useState, useRef, useEffect, KeyboardEvent } from "react";
 import { Send, Paperclip, X, Loader2, File, Image as ImageIcon, FileText, Smile } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { EmojiPickerPopover } from "./EmojiPickerPopover";
@@ -40,6 +40,18 @@ export function MessageComposer({
   const [isEmojiPickerOpen, setIsEmojiPickerOpen] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+
+  // WhatsApp-style: Clear staged attachments preview on cancel event
+  useEffect(() => {
+    const handleCancelAttachments = () => {
+      setStagedAttachments([]);
+      if (fileInputRef.current) fileInputRef.current.value = "";
+    };
+    window.addEventListener("chat:cancel-attachments", handleCancelAttachments);
+    return () => {
+      window.removeEventListener("chat:cancel-attachments", handleCancelAttachments);
+    };
+  }, []);
 
   const handleInsertEmoji = (emoji: string) => {
     const textarea = textareaRef.current;
@@ -178,7 +190,10 @@ export function MessageComposer({
 
       {/* Multiple Staged Attachments Preview Carousel / Chips */}
       {stagedAttachments.length > 0 && (
-        <div className="mb-2 flex flex-wrap gap-2 max-h-32 overflow-y-auto p-1 animate-in fade-in">
+        <div
+          data-staged-attachments="true"
+          className="mb-2 flex flex-wrap gap-2 max-h-32 overflow-y-auto p-1 animate-in fade-in"
+        >
           {stagedAttachments.map((att, idx) => {
             const isImg = att.messageType === "IMAGE" || att.mimeType.startsWith("image/");
             return (

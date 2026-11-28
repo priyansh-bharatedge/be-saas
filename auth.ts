@@ -15,6 +15,7 @@ declare module "next-auth" {
     department?: string | null;
     teamLeaderId?: string | null;
     reportingManagerId?: string | null;
+    isPasswordSet?: boolean;
   }
   interface Session {
     user: {
@@ -24,6 +25,7 @@ declare module "next-auth" {
       department?: string | null;
       teamLeaderId?: string | null;
       reportingManagerId?: string | null;
+      isPasswordSet?: boolean;
     } & DefaultSession["user"];
   }
 }
@@ -54,6 +56,11 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
         // Prevent email enumeration
         if (!employee) {
           throw new Error("Invalid credentials or user not found");
+        }
+
+        // Active status check
+        if (employee.status !== "ACTIVE") {
+          throw new Error("Account is inactive or suspended. Please contact HR.");
         }
 
         if (flowType === "otp") {
@@ -110,9 +117,14 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
             department: employee.department,
             teamLeaderId: employee.teamLeaderId,
             reportingManagerId: employee.reportingManagerId,
+            isPasswordSet: employee.isPasswordSet,
           };
         } else {
           // Password Flow
+          if (!employee.isPasswordSet || !employee.passwordHash) {
+            throw new Error("PASSWORD_NOT_SET");
+          }
+
           const submittedPassword = credentials.password as string;
           if (!submittedPassword) {
             throw new Error("Password is required.");
@@ -132,13 +144,14 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
             department: employee.department,
             teamLeaderId: employee.teamLeaderId,
             reportingManagerId: employee.reportingManagerId,
+            isPasswordSet: employee.isPasswordSet,
           };
         }
       },
     }),
   ],
   callbacks: {
-    jwt({ token, user }) {
+    jwt({ token, user, trigger, session }) {
       if (user) {
         token.id = user.id;
         token.role = user.role;
@@ -146,6 +159,10 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
         token.department = user.department;
         token.teamLeaderId = user.teamLeaderId;
         token.reportingManagerId = user.reportingManagerId;
+        token.isPasswordSet = user.isPasswordSet;
+      }
+      if (trigger === "update" && session?.isPasswordSet !== undefined) {
+        token.isPasswordSet = session.isPasswordSet;
       }
       return token;
     },
@@ -157,6 +174,7 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
         session.user.department = token.department as string;
         session.user.teamLeaderId = (token.teamLeaderId as string) || null;
         session.user.reportingManagerId = (token.reportingManagerId as string) || null;
+        session.user.isPasswordSet = (token.isPasswordSet as boolean) ?? false;
       }
       return session;
     },

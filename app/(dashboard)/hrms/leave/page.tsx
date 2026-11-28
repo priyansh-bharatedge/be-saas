@@ -45,22 +45,26 @@ export default async function HRMSLeavePage() {
               <h1 className="text-2xl font-bold tracking-tight text-slate-900">
                 Leave Management &amp; Approvals
               </h1>
-              <span className="text-[10px] uppercase font-mono px-2.5 py-0.5 rounded-full bg-[#EBF3F6] text-[#588594] border border-[#ACCAD5]/50 font-semibold">
-                2-Tier Workflow
-              </span>
+
             </div>
-            <p className="text-xs text-slate-500 mt-1 font-medium">
-              Employee leave balances, multi-tier approvals (Team Leader &rarr; HR Admin), and time-off tracking.
-            </p>
+
           </div>
 
           <div className="flex items-center gap-3">
-            <ApplyLeaveModal balances={balances} />
+            <ApplyLeaveModal
+              balances={balances}
+              paidLeaveAccrual={leaveData?.paidLeaveAccrual}
+              shortLeaveMonthly={leaveData?.shortLeaveMonthly}
+            />
           </div>
         </div>
 
-        {/* 1. Leave Balance Cards */}
-        <LeaveBalanceCards balances={balances} />
+        {/* 1. Leave Balance Cards (Strictly 2 Categories: Paid Leave & Short Leave) */}
+        <LeaveBalanceCards
+          balances={balances}
+          paidLeaveAccrual={leaveData?.paidLeaveAccrual}
+          shortLeaveMonthly={leaveData?.shortLeaveMonthly}
+        />
 
         {/* 2. Review Queue Banner for Team Leaders & HR Admins (if pending items exist) */}
         {hasReviewDuties && (

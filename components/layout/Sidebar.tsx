@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useSearchParams } from "next/navigation";
 import {
   Compass,
   Users,
@@ -31,6 +31,10 @@ import {
   TrendingUp,
   Filter,
   Activity,
+  Workflow,
+  Inbox,
+  Receipt,
+  Award,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { AuthUser } from "@/lib/auth/session";
@@ -56,6 +60,7 @@ interface NavSection {
 
 export function Sidebar({ user }: SidebarProps) {
   const pathname = usePathname();
+  const searchParams = useSearchParams();
   const [isCollapsed, setIsCollapsed] = useState(false);
   const [isProfileModalOpen, setIsProfileModalOpen] = useState(false);
   const [avatarUrl, setAvatarUrl] = useState<string | null | undefined>(user?.avatarUrl);
@@ -125,6 +130,11 @@ export function Sidebar({ user }: SidebarProps) {
     user?.systemRole === "ADMIN_HOD" ||
     user?.systemRole === "HR_ADMIN" ||
     user?.systemRole === "TEAM_LEADER";
+  const isHrAdmin =
+    isSuperAdmin ||
+    user?.systemRole === "HR_ADMIN" ||
+    userDept.includes("hr") ||
+    user?.role === "HRMS";
 
   // Dynamic Navigation Sections based strictly on Active Product
   const getNavSections = (): NavSection[] => {
@@ -215,14 +225,34 @@ export function Sidebar({ user }: SidebarProps) {
           icon: LayoutDashboard,
         });
       }
+      if (isHrAdmin) {
+        hrmsItems.push({
+          title: "Inbox",
+          href: "/hrms/inbox",
+          icon: Inbox,
+        });
+      }
       hrmsItems.push(
         { title: "Overview", href: "/hrms", icon: Compass, shortcut: "⌘M" },
         { title: "Directory", href: "/hrms/directory", icon: Users },
         { title: "Attendance", href: "/hrms/attendance", icon: Clock },
         { title: "Leave & Off", href: "/hrms/leave", icon: CalendarCheck },
+        { title: "Reimbursements", href: "/hrms/reimbursements", icon: Receipt },
+        { title: "Helpdesk", href: "/hrms/helpdesk", icon: MessageSquare },
+        { title: "Performance", href: "/hrms/performance", icon: TrendingUp },
+        { title: "Payroll", href: "/hrms/payroll", icon: FileText },
+        { title: "Resignations", href: "/hrms/resignations", icon: LogOut },
+        { title: "Surveys", href: "/hrms/surveys", icon: Activity },
         { title: "Calendar", href: "/hrms/calendar", icon: Calendar },
         { title: "Policies", href: "/hrms/policies", icon: BookText }
       );
+      if (isHrAdmin) {
+        hrmsItems.push({
+          title: "Workflows",
+          href: "/hrms/workflows",
+          icon: Workflow,
+        });
+      }
 
       const accessItems: NavItem[] = [];
       if (canViewHierarchy) {
@@ -366,7 +396,7 @@ export function Sidebar({ user }: SidebarProps) {
   return (
     <aside
       className={cn(
-        "shrink-0 bg-[#F4F6F8] border-r border-slate-200/70 flex flex-col h-full select-none transition-all duration-300 ease-in-out",
+        "shrink-0 bg-white/65 backdrop-blur-xl border-r border-white/80 shadow-[4px_0_24px_rgba(15,23,42,0.03)] flex flex-col h-full select-none transition-all duration-300 ease-in-out",
         isCollapsed ? "w-[68px]" : "w-60"
       )}
     >
@@ -462,13 +492,27 @@ export function Sidebar({ user }: SidebarProps) {
 
             <div className="space-y-1">
               {group.items.map((item) => {
-                const isActive =
-                  pathname === item.href ||
-                  (item.href !== "/crm" &&
-                    item.href !== "/hrms" &&
-                    item.href !== "/support" &&
-                    item.href !== "/portal" &&
-                    pathname.startsWith(item.href + "/"));
+                let isActive = false;
+                if (item.href.includes("?")) {
+                  const [itemPath, itemQuery] = item.href.split("?");
+                  const itemParams = new URLSearchParams(itemQuery);
+                  const tabParam = itemParams.get("tab");
+                  const currentTab = searchParams.get("tab") || (pathname === "/admin" ? "orbital" : null);
+                  isActive = pathname === itemPath && currentTab === tabParam;
+                } else {
+                  const currentTab = searchParams.get("tab");
+                  if (item.href === "/admin") {
+                    isActive = pathname === "/admin" && (!currentTab || currentTab === "orbital");
+                  } else {
+                    isActive =
+                      pathname === item.href ||
+                      (item.href !== "/crm" &&
+                        item.href !== "/hrms" &&
+                        item.href !== "/support" &&
+                        item.href !== "/portal" &&
+                        pathname.startsWith(item.href + "/"));
+                  }
+                }
                 const Icon = item.icon;
 
                 if (isCollapsed) {
@@ -480,18 +524,18 @@ export function Sidebar({ user }: SidebarProps) {
                       className={cn(
                         "relative flex items-center justify-center w-10 h-10 mx-auto rounded-2xl transition-all group",
                         isActive
-                          ? "bg-white text-slate-950 font-bold shadow-xs border border-slate-200/60"
+                          ? "bg-[#18181B] text-white font-bold shadow-xs border border-slate-800"
                           : "text-slate-500 hover:text-slate-950 hover:bg-white/60"
                       )}
                     >
                       <Icon
                         className={cn(
                           "h-4 w-4 shrink-0 transition-colors",
-                          isActive ? "text-slate-950" : "text-slate-500 group-hover:text-slate-800"
+                          isActive ? "text-[#E86C2C]" : "text-slate-500 group-hover:text-slate-800"
                         )}
                       />
                       {item.badge !== undefined && (
-                        <span className="absolute top-1.5 right-1.5 w-2 h-2 rounded-full bg-slate-950 ring-2 ring-white" />
+                        <span className="absolute top-1.5 right-1.5 w-2 h-2 rounded-full bg-[#E86C2C] ring-2 ring-white" />
                       )}
                     </Link>
                   );
@@ -504,21 +548,21 @@ export function Sidebar({ user }: SidebarProps) {
                     className={cn(
                       "flex items-center gap-2.5 px-3 py-2 rounded-full text-xs font-medium transition-all group",
                       isActive
-                        ? "bg-white text-slate-950 font-semibold shadow-xs"
+                        ? "bg-[#18181B] text-white font-semibold shadow-xs"
                         : "text-slate-600 hover:text-slate-950 hover:bg-white/60"
                     )}
                   >
                     <Icon
                       className={cn(
                         "h-4 w-4 shrink-0 transition-colors",
-                        isActive ? "text-slate-950" : "text-slate-400 group-hover:text-slate-700"
+                        isActive ? "text-[#E86C2C]" : "text-slate-400 group-hover:text-slate-700"
                       )}
                     />
                     <span className="truncate">{item.title}</span>
 
                     {/* Notification badge / count */}
                     {item.badge !== undefined && (
-                      <span className="w-4 h-4 rounded-full bg-slate-950 text-white text-[10px] font-bold flex items-center justify-center ml-auto shrink-0 shadow-2xs">
+                      <span className="w-4 h-4 rounded-full bg-[#E86C2C] text-white text-[10px] font-bold flex items-center justify-center ml-auto shrink-0 shadow-2xs">
                         {item.badge}
                       </span>
                     )}

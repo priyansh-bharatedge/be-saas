@@ -3,6 +3,7 @@ import { getCurrentUser } from "@/lib/auth/session";
 import { Role } from "@prisma/client";
 import ClockWidget from "@/components/attendance/ClockWidget";
 import AttendanceReportView from "@/components/attendance/AttendanceReportView";
+import AttendanceRegularizationSection from "@/components/attendance/AttendanceRegularizationSection";
 import {
   getTodayAttendanceAction,
   getAttendanceReportAction,
@@ -32,6 +33,8 @@ export default async function HRMSAttendancePage() {
     user.systemRole === "HR_ADMIN" ||
     (user.systemRole === "ADMIN_HOD" && (user.department || "").toLowerCase().includes("hr"));
 
+  const isTL = user.systemRole === "TEAM_LEADER" || user.systemRole === "ADMIN_HOD";
+
   // Fetch today's personal attendance state for the user's widget
   const todayAttendanceRes = await getTodayAttendanceAction();
   const initialClockData = todayAttendanceRes.success ? todayAttendanceRes.data : null;
@@ -55,37 +58,25 @@ export default async function HRMSAttendancePage() {
   const initialStats = reportRes?.success && reportRes.data
     ? reportRes.data.stats
     : {
-        totalEmployees: 0,
-        activeNow: 0,
-        idleNow: 0,
-        clockedOut: 0,
-        avgWorkingHours: 0,
-      };
+      totalEmployees: 0,
+      activeNow: 0,
+      idleNow: 0,
+      clockedOut: 0,
+      avgWorkingHours: 0,
+    };
 
   return (
     <PageTransition>
       <div className="space-y-6">
-        {/* Page Title & Breadcrumb Header */}
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-          <div>
-            <h1 className="text-2xl font-bold tracking-tight text-slate-900">
-              Time & Attendance Tracking
-            </h1>
-            <p className="text-xs text-slate-500 mt-1 font-medium">
-              Active shift punch card, 5-minute automated idle pause, and employee attendance records.
-            </p>
-          </div>
-          <div className="flex items-center gap-2">
-            <span className="text-[11px] font-mono px-3.5 py-1 rounded-full bg-white/80 border border-slate-200/80 text-slate-700 font-semibold shadow-2xs">
-              Role: {user.role}
-            </span>
-          </div>
-        </div>
+
 
         {/* 1. Employee Dashboard Clock-In/Out Widget */}
         <ClockWidget initialData={initialClockData} />
 
-        {/* 2. Attendance View: Organization Administration for HR Admins, Personal Self-Service History for Staff */}
+        {/* 2. Attendance Regularization Requests & Review Desk */}
+        <AttendanceRegularizationSection isHrAdmin={isHrAdmin} isTL={isTL} />
+
+        {/* 3. Attendance View: Organization Administration for HR Admins, Personal Self-Service History for Staff */}
         <div>
           <div className="mb-4">
             <h2 className="text-lg font-bold text-slate-900">

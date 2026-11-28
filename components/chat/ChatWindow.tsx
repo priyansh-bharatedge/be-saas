@@ -11,6 +11,7 @@ import {
   Sparkles,
   ChevronDown,
   Bot,
+  X,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { MessageItem, ConversationSummary } from "@/lib/actions/chat";
@@ -40,6 +41,7 @@ interface ChatWindowProps {
     canEdit?: boolean
   ) => void;
   onBackMobile: () => void;
+  onCloseChat?: () => void;
   isLoadingMessages?: boolean;
   onToggleReaction?: (messageId: string, emoji: string) => void;
   isOversightMode?: boolean;
@@ -56,6 +58,7 @@ export function ChatWindow({
   onOpenContactInfo,
   onOpenLightbox,
   onBackMobile,
+  onCloseChat,
   isLoadingMessages,
   onToggleReaction,
   isOversightMode = false,
@@ -66,15 +69,22 @@ export function ChatWindow({
   const testMenuRef = useRef<HTMLDivElement>(null);
   const [isTestMenuOpen, setIsTestMenuOpen] = useState(false);
 
-  // Close test menu on click outside
+  // Close test menu on click outside or close event
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
       if (testMenuRef.current && !testMenuRef.current.contains(e.target as Node)) {
         setIsTestMenuOpen(false);
       }
     };
+    const handleCustomClose = () => {
+      setIsTestMenuOpen(false);
+    };
     document.addEventListener("mousedown", handleClickOutside);
-    return () => document.removeEventListener("mousedown", handleClickOutside);
+    window.addEventListener("chat:close-test-menu", handleCustomClose);
+    return () => {
+      document.removeEventListener("mousedown", handleClickOutside);
+      window.removeEventListener("chat:close-test-menu", handleCustomClose);
+    };
   }, []);
 
   const AI_QUICK_PROMPTS = [
@@ -135,7 +145,7 @@ export function ChatWindow({
 
           {/* Prompt */}
           <div className="mt-6 p-3 px-4 rounded-2xl bg-white/80 border border-slate-200/60 shadow-xs text-xs text-slate-600">
-            👈 Select a conversation on the left or use the search bar to find a colleague.
+            👈 Select a conversation to start messaging, or search for a colleague.
           </div>
 
           {/* Encrypted Notice */}
@@ -297,7 +307,10 @@ export function ChatWindow({
               </Button>
 
               {isTestMenuOpen && (
-                <div className="absolute right-0 top-full mt-2 w-64 rounded-2xl bg-white/95 backdrop-blur-xl border border-slate-200/80 shadow-2xl p-1.5 z-50 animate-in fade-in zoom-in-95">
+                <div
+                  data-test-menu="true"
+                  className="absolute right-0 top-full mt-2 w-64 rounded-2xl bg-white/95 backdrop-blur-xl border border-slate-200/80 shadow-2xl p-1.5 z-50 animate-in fade-in zoom-in-95"
+                >
                   <div className="px-2.5 py-1.5 text-[10px] font-bold text-slate-400 uppercase tracking-wider border-b border-slate-100 mb-1">
                     Scheduled AI Briefings
                   </div>
@@ -381,6 +394,20 @@ export function ChatWindow({
           >
             <Info className="h-4 w-4" />
           </Button>
+
+          {/* Close Chat Button (WhatsApp Web Style) */}
+          {onCloseChat && (
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={onCloseChat}
+              className="h-9 w-9 rounded-xl text-slate-400 hover:text-slate-700 hover:bg-[#EBF3F6]/60 transition-colors"
+              title="Close chat (Esc)"
+              aria-label="Close chat"
+            >
+              <X className="h-4 w-4" />
+            </Button>
+          )}
         </div>
       </div>
 

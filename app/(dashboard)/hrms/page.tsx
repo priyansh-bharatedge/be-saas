@@ -1,3 +1,4 @@
+import { redirect } from "next/navigation";
 import DepartmentHeader from "@/components/layout/DepartmentHeader";
 import PageTransition from "@/components/animations/PageTransition";
 import HoverCard from "@/components/animations/HoverCard";
@@ -7,13 +8,137 @@ import { Users, UserCheck, CalendarDays, ShieldCheck, UserPlus, Clock } from "lu
 import Link from "next/link";
 import ClockWidget from "@/components/attendance/ClockWidget";
 import { getTodayAttendanceAction } from "@/lib/actions/attendance";
+import { getCurrentUser } from "@/lib/auth/session";
+import { isHrAdminRole } from "@/lib/auth/rbac";
+import { db } from "@/lib/db";
+import EmployeePersonalDashboard from "@/components/hrms/EmployeePersonalDashboard";
 
 export const dynamic = "force-dynamic";
 
 export default async function HRMSOverviewPage() {
+  const user = await getCurrentUser();
+  if (!user) {
+    redirect("/login");
+  }
+
   const attendanceRes = await getTodayAttendanceAction();
   const initialClockData = attendanceRes.success ? attendanceRes.data : null;
 
+  const isHrOrAdmin = isHrAdminRole(user);
+
+  // 1. Regular Employees (Non-HR / Non-SuperAdmin): Render strictly scoped Personal Employee Dashboard
+  if (!isHrOrAdmin) {
+    const employee = await db.employee.findFirst({
+      where: {
+        OR: [{ id: user.id }, { workEmail: user.email }],
+      },
+      include: {
+        teamLeader: { select: { firstName: true, lastName: true, employeeId: true } },
+        reportingManager: { select: { firstName: true, lastName: true, employeeId: true } },
+        leaveBalances: { where: { year: new Date().getFullYear() } },
+      },
+    });
+
+    if (!employee) {
+      redirect("/login");
+    }
+
+    const now = new Date();
+    const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+    const endOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59, 999);
+
+    const [monthlyAttendance, recentLeaveRequests, pendingRequestsCount, recentAttendanceLogs] =
+      await Promise.all([
+        db.attendance.findMany({
+          where: {
+            employeeId: employee.id,
+            date: { gte: startOfMonth, lte: endOfMonth },
+          },
+          orderBy: { date: "desc" },
+        }),
+        db.leaveRequest.findMany({
+          where: { employeeId: employee.id },
+          orderBy: { createdAt: "desc" },
+          take: 5,
+        }),
+        db.leaveRequest.count({
+          where: { employeeId: employee.id, finalStatus: "PENDING" },
+        }),
+        db.attendance.findMany({
+          where: { employeeId: employee.id },
+          orderBy: { date: "desc" },
+          take: 5,
+        }),
+      ]);
+
+    const daysPresent = monthlyAttendance.filter(
+      (a) => a.clockInTime !== null || a.totalActiveHours > 0
+    ).length;
+
+    // Working days elapsed so far this month (Mon - Sat, excluding Sundays)
+    let workingDaysElapsed = 0;
+    for (let d = new Date(startOfMonth); d <= now; d.setDate(d.getDate() + 1)) {
+      if (d.getDay() !== 0) {
+        workingDaysElapsed++;
+      }
+    }
+    workingDaysElapsed = Math.max(workingDaysElapsed, 1);
+    const attendancePercentage = Math.min(
+      100,
+      Math.round((daysPresent / workingDaysElapsed) * 100)
+    );
+
+    let leaveBalances = employee.leaveBalances || [];
+    if (leaveBalances.length === 0) {
+      const currentYear = now.getFullYear();
+      const defaultTypes = [
+        { leaveType: "PAID_LEAVE" as const, allocatedDays: 12 },
+        { leaveType: "SHORT_LEAVE" as const, allocatedDays: 0 },
+      ];
+      for (const def of defaultTypes) {
+        await db.leaveBalance.upsert({
+          where: {
+            employeeId_leaveType_year: {
+              employeeId: employee.id,
+              leaveType: def.leaveType,
+              year: currentYear,
+            },
+          },
+          update: {},
+          create: {
+            employeeId: employee.id,
+            leaveType: def.leaveType,
+            year: currentYear,
+            allocatedDays: def.allocatedDays,
+            usedDays: 0,
+            remainingDays: def.allocatedDays,
+          },
+        });
+      }
+      leaveBalances = await db.leaveBalance.findMany({
+        where: { employeeId: employee.id, year: currentYear },
+      });
+    }
+
+    const totalRemainingDays = leaveBalances.reduce((sum, b) => sum + b.remainingDays, 0);
+
+    return (
+      <EmployeePersonalDashboard
+        employee={employee}
+        initialClockData={initialClockData}
+        daysPresent={daysPresent}
+        workingDaysElapsed={workingDaysElapsed}
+        attendancePercentage={attendancePercentage}
+        leaveBalances={leaveBalances as any}
+        totalRemainingDays={totalRemainingDays}
+        pendingRequestsCount={pendingRequestsCount}
+        recentLeaveRequests={recentLeaveRequests as any}
+        recentAttendanceLogs={recentAttendanceLogs as any}
+      />
+    );
+  }
+
+  // 2. HR and Super Admin Roles: Keep existing full HR Management dashboard intact
   const metrics = [
     { title: "Total Headcount", value: "318", change: "+12 this quarter", icon: Users },
     { title: "Present Today", value: "96.2%", change: "306 clocked-in", icon: UserCheck },

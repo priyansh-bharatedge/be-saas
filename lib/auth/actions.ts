@@ -7,6 +7,8 @@ import { emailSchema, passwordLoginSchema, otpVerifySchema } from "@/lib/validat
 import { sendOtpEmail } from "@/lib/mail";
 import { AuthError } from "next-auth";
 import { Role, SystemRole } from "@prisma/client";
+import bcrypt from "bcryptjs";
+import { encryptPassword } from "@/lib/security/encryption";
 
 export interface ServerActionResult {
   success: boolean;
@@ -14,6 +16,7 @@ export interface ServerActionResult {
   message?: string;
   cooldownRemaining?: number;
   redirectTo?: string;
+  requiresOtpSetup?: boolean;
 }
 
 /**
@@ -112,6 +115,36 @@ export async function loginWithPasswordAction(
       password: passwordInput,
     });
 
+    const email = validated.email.trim().toLowerCase();
+
+    // Check if employee exists and whether their password has been set
+    const employee = await db.employee.findUnique({
+      where: { workEmail: email },
+      select: {
+        id: true,
+        status: true,
+        isPasswordSet: true,
+        passwordHash: true,
+      },
+    });
+
+    if (!employee) {
+      return { success: false, error: "Invalid credentials or user not found." };
+    }
+
+    if (employee.status !== "ACTIVE") {
+      return { success: false, error: "Account is inactive or suspended. Please contact HR." };
+    }
+
+    // Prompt user to log in via Email OTP to set their password on first login
+    if (employee.isPasswordSet === false || !employee.passwordHash) {
+      return {
+        success: false,
+        requiresOtpSetup: true,
+        error: "Your password has not been set yet. Please log in using Email OTP to verify your account and set your password.",
+      };
+    }
+
     await signIn("credentials", {
       email: validated.email,
       password: validated.password,
@@ -135,6 +168,13 @@ export async function loginWithPasswordAction(
     }
     if (err instanceof Error) {
       const msg = err.message;
+      if (msg.includes("PASSWORD_NOT_SET")) {
+        return {
+          success: false,
+          requiresOtpSetup: true,
+          error: "Your password has not been set yet. Please log in using Email OTP to verify your account and set your password.",
+        };
+      }
       if (
         msg.includes("Invalid credentials") ||
         msg.includes("User not found") ||
@@ -162,6 +202,21 @@ export async function loginWithOtpAction(
       otp: otpInput,
     });
 
+    const email = validated.email.trim().toLowerCase();
+
+    const employee = await db.employee.findUnique({
+      where: { workEmail: email },
+      select: { id: true, isPasswordSet: true, status: true },
+    });
+
+    if (!employee) {
+      return { success: false, error: "Invalid credentials or user not found" };
+    }
+
+    if (employee.status !== "ACTIVE") {
+      return { success: false, error: "Account is inactive or suspended. Please contact HR." };
+    }
+
     await signIn("credentials", {
       email: validated.email,
       otp: validated.otp,
@@ -169,9 +224,12 @@ export async function loginWithOtpAction(
       redirect: false,
     });
 
+    // If first-time user (password not set), route directly to set-password screen!
+    const destination = employee.isPasswordSet ? "/portal" : "/set-password";
+
     return {
       success: true,
-      redirectTo: "/portal",
+      redirectTo: destination,
     };
   } catch (err: unknown) {
     if (err instanceof AuthError) {
@@ -187,6 +245,100 @@ export async function loginWithOtpAction(
       return { success: false, error: msg };
     }
     return { success: false, error: "Failed to verify OTP." };
+  }
+}
+
+/**
+ * Reset / Update password via verified OTP
+ */
+export async function resetPasswordWithOtpAction(
+  emailInput: string,
+  otpInput: string,
+  newPasswordInput: string,
+  confirmPasswordInput: string
+): Promise<ServerActionResult> {
+  try {
+    const email = emailInput.trim().toLowerCase();
+    const otp = otpInput.trim();
+
+    if (!email || !otp) {
+      return { success: false, error: "Email and OTP code are required." };
+    }
+
+    if (!newPasswordInput || newPasswordInput.length < 8) {
+      return { success: false, error: "New password must be at least 8 characters." };
+    }
+
+    if (newPasswordInput !== confirmPasswordInput) {
+      return { success: false, error: "Passwords do not match." };
+    }
+
+    const employee = await db.employee.findUnique({
+      where: { workEmail: email },
+    });
+
+    if (!employee) {
+      return { success: false, error: "Invalid credentials or user not found." };
+    }
+
+    if (employee.status !== "ACTIVE") {
+      return { success: false, error: "Account is inactive or suspended. Please contact HR." };
+    }
+
+    if (!employee.otp || !employee.otpExpiry) {
+      return { success: false, error: "No active OTP found. Please request a new code." };
+    }
+
+    if (new Date() > new Date(employee.otpExpiry)) {
+      await db.employee.update({
+        where: { id: employee.id },
+        data: { otp: null, otpExpiry: null, otpAttempts: 0 },
+      });
+      return { success: false, error: "OTP expired. Please request a new code." };
+    }
+
+    if (employee.otp !== otp) {
+      const nextAttempts = (employee.otpAttempts || 0) + 1;
+      if (nextAttempts >= 3) {
+        await db.employee.update({
+          where: { id: employee.id },
+          data: { otp: null, otpExpiry: null, otpAttempts: 0 },
+        });
+        return { success: false, error: "Too many failed attempts. This OTP has been invalidated. Please request a new code." };
+      } else {
+        await db.employee.update({
+          where: { id: employee.id },
+          data: { otpAttempts: nextAttempts },
+        });
+        const remaining = 3 - nextAttempts;
+        return { success: false, error: `Invalid OTP code. ${remaining} attempt${remaining === 1 ? "" : "s"} remaining.` };
+      }
+    }
+
+    // Hash with bcrypt and encrypt with AES-256-GCM
+    const salt = await bcrypt.genSalt(10);
+    const passwordHash = await bcrypt.hash(newPasswordInput, salt);
+    const encryptedPassword = encryptPassword(newPasswordInput);
+
+    await db.employee.update({
+      where: { id: employee.id },
+      data: {
+        passwordHash,
+        encryptedPassword,
+        isPasswordSet: true,
+        otp: null,
+        otpExpiry: null,
+        otpAttempts: 0,
+      },
+    });
+
+    return {
+      success: true,
+      message: "Password reset successfully! You can now log in with your new password.",
+    };
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : "Failed to reset password.";
+    return { success: false, error: message };
   }
 }
 

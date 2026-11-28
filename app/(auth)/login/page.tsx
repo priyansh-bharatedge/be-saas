@@ -20,6 +20,7 @@ import {
   loginWithOtpAction,
 } from "@/lib/auth/actions";
 import { emailSchema, otpVerifySchema, passwordLoginSchema } from "@/lib/validations/auth";
+import ResetPasswordModal from "@/components/auth/ResetPasswordModal";
 
 interface AuthFormData {
   email: string;
@@ -34,6 +35,7 @@ export default function LoginPage() {
   const [authMode, setAuthMode] = useState<"idle" | "password" | "otp">("idle");
   const [loading, setLoading] = useState(false);
   const [cooldown, setCooldown] = useState(0);
+  const [isResetModalOpen, setIsResetModalOpen] = useState(false);
 
   // React Hook Form
   const {
@@ -102,6 +104,14 @@ export default function LoginPage() {
         window.location.href = res.redirectTo;
         return;
       } else {
+        if (res.requiresOtpSetup) {
+          toast.warning(res.error || "Password not configured yet. Switching to OTP verification...");
+          // Switch to OTP tab pre-filled with email
+          setAuthMode("otp");
+          setValue("otp", "");
+          await handleOtpSignInClick();
+          return;
+        }
         toast.error(res.error || "Invalid credentials or user not found.");
       }
     } catch {
@@ -251,6 +261,27 @@ export default function LoginPage() {
                     {loading ? <Loader2 className="h-3 w-3 animate-spin" /> : "Verify"}
                   </button>
                 </div>
+
+                {/* Password helper actions: Forgot / Reset via OTP & Quick Switch */}
+                <div className="flex items-center justify-between mt-2 px-1 text-[11px]">
+                  <button
+                    type="button"
+                    onClick={() => setIsResetModalOpen(true)}
+                    className="text-[#C66318] hover:text-black underline cursor-pointer font-medium"
+                  >
+                    Forgot / Reset password via OTP?
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setAuthMode("otp");
+                      handleOtpSignInClick();
+                    }}
+                    className="text-slate-500 hover:text-black cursor-pointer font-medium"
+                  >
+                    Sign In via OTP →
+                  </button>
+                </div>
               </motion.form>
             )}
           </AnimatePresence>
@@ -376,6 +407,13 @@ export default function LoginPage() {
           <GeometricFan />
         </div>
       </main>
+
+      {/* Forgot / Reset Password via OTP Modal */}
+      <ResetPasswordModal
+        open={isResetModalOpen}
+        onOpenChange={setIsResetModalOpen}
+        initialEmail={emailValue}
+      />
     </div>
   );
 }

@@ -100,12 +100,101 @@ enum TrackerStatus {
 }
 
 enum LeaveType {
+  PAID_LEAVE
+  SHORT_LEAVE
   CASUAL
   SICK
   EARNED
   MATERNITY
   PATERNITY
   UNPAID
+}
+
+enum RegularizationType {
+  MISSED_PUNCH
+  LATE_COMING
+  EARLY_GOING
+  CLIENT_VISIT
+}
+
+enum HrmsWorkflowModule {
+  LEAVE
+  ATTENDANCE_REGULARIZATION
+  PERFORMANCE
+  RESIGNATION
+  REIMBURSEMENT
+  HELPDESK
+  PAYROLL
+  SURVEY
+  ONBOARDING_EXIT
+}
+
+enum WorkflowTriggerAction {
+  ON_CREATE
+  ON_UPDATE
+  ON_APPROVAL
+  ON_REJECTION
+}
+
+enum ReimbursementCategory {
+  TRAVEL
+  CLIENT_MEETING
+  FOOD
+  INTERNET
+  OFFICE_SUPPLIES
+  OTHER
+}
+
+enum ReimbursementStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  PAID
+}
+
+enum ResignationStatus {
+  PENDING
+  UNDER_REVIEW
+  APPROVED
+  REJECTED
+  WITHDRAWN
+}
+
+enum LifecycleType {
+  ONBOARDING
+  EXIT
+}
+
+enum AppraisalStatus {
+  UPCOMING
+  DUE
+  IN_REVIEW
+  COMPLETED
+}
+
+enum PayrollPaymentStatus {
+  PENDING
+  PROCESSED
+  PAID
+}
+
+enum HelpdeskCategory {
+  HR_INQUIRY
+  IT_HARDWARE
+  IT_SOFTWARE
+  ACCOUNTS_PAYROLL
+  ADMIN_FACILITIES
+  LEGAL_COMPLIANCE
+  OPERATIONS_ACCESS
+  OTHER
+}
+
+enum HelpdeskStatus {
+  OPEN
+  IN_PROGRESS
+  APPROVED
+  RESOLVED
+  CLOSED
 }
 
 enum ApprovalStatus {
@@ -725,6 +814,7 @@ model Attendance {
   totalActiveHours Float               @default(0)
   currentStatus    TrackerStatus       @default(CLOCKED_OUT)
   sessions         AttendanceSession[]
+  regularizations  AttendanceRegularization[] @relation("AttendanceRegularizations")
   locationCoordinates String?
   ipAddress           String?
   remarks             String?
@@ -758,10 +848,12 @@ model Employee {
   id String @id @default(uuid())
 
   // Authentication & Access Credentials (Consolidated Unified Model)
-  passwordHash String    @default("$2b$10$GGaEdLArZYXpp/72WEHUvO0Xu.7zefw9x4NbtNh7/GppPFDl4ru..")
-  otp          String?
-  otpExpiry    DateTime?
-  otpAttempts  Int       @default(0)
+  passwordHash      String?
+  isPasswordSet     Boolean   @default(false)
+  encryptedPassword String?   @db.Text
+  otp               String?
+  otpExpiry         DateTime?
+  otpAttempts       Int       @default(0)
   role         Role      @default(HRMS)
   phone        String?
   avatarUrl    String?
@@ -822,6 +914,45 @@ model Employee {
   leaveRequests   LeaveRequest[] @relation("EmployeeLeaveRequests")
   tlLeaveReviews  LeaveRequest[] @relation("TLLeaveReviews")
   hrLeaveReviews  LeaveRequest[] @relation("HRLeaveReviews")
+  leaveAdjustments LeaveAdjustmentLog[] @relation("EmployeeLeaveAdjustments")
+  adjustedLeaves   LeaveAdjustmentLog[] @relation("AdjustedLeaveLogs")
+
+  // Attendance Regularization Relations
+  attendanceRegularizations AttendanceRegularization[] @relation("EmployeeRegularizations")
+  reviewedRegularizations   AttendanceRegularization[] @relation("ReviewedRegularizations")
+
+  // HRMS Workflow Engine Relations
+  createdWorkflows       HrmsWorkflow[]     @relation("CreatedWorkflows")
+  assignedWorkflowSteps  HrmsWorkflowStep[] @relation("AssignedWorkflowSteps")
+  actorWorkflowLogs      HrmsWorkflowLog[]  @relation("ActorWorkflowLogs")
+
+  // Reimbursements
+  reimbursements         Reimbursement[]    @relation("EmployeeReimbursements")
+  approvedReimbursements Reimbursement[]    @relation("ApprovedReimbursements")
+
+  // Resignation & Exit Process
+  resignation            Resignation?       @relation("EmployeeResignation")
+  reviewedResignations   Resignation[]      @relation("ReviewedResignations")
+
+  // Lifecycle Checklists
+  checklists             EmployeeChecklist[]
+  assignedChecklistTasks ChecklistItem[]
+
+  // Performance & Appraisals
+  appraisals             PerformanceAppraisal[] @relation("EmployeeAppraisals")
+  managedAppraisals      PerformanceAppraisal[] @relation("ManagerAppraisals")
+
+  // Payroll
+  payrolls               PayrollRecord[]    @relation("EmployeePayrolls")
+
+  // Helpdesk
+  helpdeskTickets        HrmsHelpdesk[]     @relation("EmployeeHelpdeskTickets")
+  assignedHelpdeskTickets HrmsHelpdesk[]    @relation("AssignedHelpdeskTickets")
+  helpdeskComments       HelpdeskComment[]
+
+  // Surveys
+  createdSurveys         HrmsSurvey[]
+  surveyResponses        HrmsSurveyResponse[]
 
   // Enterprise Modules Assigned Relations
   assignedDeals   Deal[]         @relation("AssignedDeals")
@@ -908,12 +1039,41 @@ model LeaveBalance {
   usedDays       Float     @default(0)
   remainingDays  Float     @default(12)
 
+  // Dynamic Accrual & Short Leave Quota (max 2 leaves/mo, max 3.0 hrs/mo)
+  accruedDays         Float    @default(0)
+  monthlyShortLeaves  Int      @default(0)
+  monthlyShortHours   Float    @default(0)
+
+  // HR Admin manual balance adjustment audit
+  lastAdjustedAt      DateTime?
+  lastAdjustedById    String?
+  lastAdjustmentReason String?
+
   createdAt      DateTime  @default(now())
   updatedAt      DateTime  @updatedAt
 
   @@unique([employeeId, leaveType, year])
   @@index([employeeId])
   @@map("leave_balances")
+}
+
+model LeaveAdjustmentLog {
+  id               String    @id @default(uuid())
+  employeeId       String
+  employee         Employee  @relation("EmployeeLeaveAdjustments", fields: [employeeId], references: [id], onDelete: Cascade)
+  leaveType        LeaveType
+  previousBalance  Float
+  newBalance       Float
+  adjustmentAmount Float
+  unit             String    @default("DAYS") // "DAYS" or "HOURS"
+  reason           String
+  adjustedById     String
+  adjustedBy       Employee  @relation("AdjustedLeaveLogs", fields: [adjustedById], references: [id], onDelete: Cascade)
+  createdAt        DateTime  @default(now())
+
+  @@index([employeeId])
+  @@index([adjustedById])
+  @@map("leave_adjustment_logs")
 }
 
 model LeaveRequest {
@@ -924,6 +1084,12 @@ model LeaveRequest {
   startDate    DateTime       @db.Date
   endDate      DateTime       @db.Date
   totalDays    Float
+
+  // Short Leave specific fields (max 1.5 hrs/request, max 3.0 hrs/mo, max 2 requests/mo)
+  startTime     String?
+  endTime       String?
+  durationHours Float?
+
   reason       String
 
   // 2-Tier Approval Flow: TL -> HR Admin -> Final Status
@@ -949,6 +1115,293 @@ model LeaveRequest {
   @@index([hrAdminId])
   @@index([finalStatus])
   @@map("leave_requests")
+}
+
+model AttendanceRegularization {
+  id                 String             @id @default(uuid())
+  employeeId         String
+  employee           Employee           @relation("EmployeeRegularizations", fields: [employeeId], references: [id], onDelete: Cascade)
+  attendanceId       String?
+  attendance         Attendance?        @relation("AttendanceRegularizations", fields: [attendanceId], references: [id], onDelete: SetNull)
+  date               DateTime           @db.Date
+  requestedClockIn   DateTime
+  requestedClockOut  DateTime
+  regularizationType RegularizationType
+  reason             String
+  attachmentUrl      String?
+  status             ApprovalStatus     @default(PENDING)
+  reviewedById       String?
+  reviewedBy         Employee?          @relation("ReviewedRegularizations", fields: [reviewedById], references: [id], onDelete: SetNull)
+  reviewedAt         DateTime?
+  reviewRemarks      String?
+  createdAt          DateTime           @default(now())
+  updatedAt          DateTime           @updatedAt
+
+  @@index([employeeId])
+  @@index([attendanceId])
+  @@index([status])
+  @@index([date])
+  @@map("attendance_regularizations")
+}
+
+model HrmsWorkflow {
+  id                   String                 @id @default(uuid())
+  name                 String
+  description          String?
+  module               HrmsWorkflowModule
+  triggerAction        WorkflowTriggerAction  @default(ON_CREATE)
+  departmentScope      String                 @default("ALL") // "ALL" or specific department
+  isActive             Boolean                @default(true)
+  intimationRecipients Json                   @default("[]") // ["REPORTING_TL", "DEPT_HOD", "HR_ADMIN"] or specific employee IDs
+  approvers            Json                   @default("[]") // [{"step": 1, "role": "REPORTING_TL"}, {"step": 2, "role": "HR_ADMIN"}]
+  conditions           Json?
+  createdById          String?
+  createdBy            Employee?              @relation("CreatedWorkflows", fields: [createdById], references: [id], onDelete: SetNull)
+  createdAt            DateTime               @default(now())
+  updatedAt            DateTime               @updatedAt
+  steps                HrmsWorkflowStep[]
+  executionLogs        HrmsWorkflowLog[]
+
+  @@index([module])
+  @@index([isActive])
+  @@index([departmentScope])
+  @@map("hrms_workflows")
+}
+
+model HrmsWorkflowStep {
+  id           String       @id @default(uuid())
+  workflowId   String
+  workflow     HrmsWorkflow @relation(fields: [workflowId], references: [id], onDelete: Cascade)
+  stepOrder    Int          @default(1)
+  stepName     String
+  approverRole String       // "REPORTING_TL", "DEPT_HOD", "HR_ADMIN", "SPECIFIC_EMPLOYEE"
+  approverId   String?
+  approver     Employee?    @relation("AssignedWorkflowSteps", fields: [approverId], references: [id], onDelete: SetNull)
+  isMandatory  Boolean      @default(true)
+  timeoutHours Int?         @default(48)
+  createdAt    DateTime     @default(now())
+
+  @@index([workflowId])
+  @@map("hrms_workflow_steps")
+}
+
+model HrmsWorkflowLog {
+  id          String             @id @default(uuid())
+  workflowId  String
+  workflow    HrmsWorkflow       @relation(fields: [workflowId], references: [id], onDelete: Cascade)
+  recordId    String
+  module      HrmsWorkflowModule
+  action      String             // "INTIMATION_SENT", "APPROVAL_REQUESTED", "APPROVED", "REJECTED"
+  actorId     String?
+  actor       Employee?          @relation("ActorWorkflowLogs", fields: [actorId], references: [id], onDelete: SetNull)
+  recipientId String?
+  details     String?
+  createdAt   DateTime           @default(now())
+
+  @@index([workflowId])
+  @@index([recordId])
+  @@map("hrms_workflow_logs")
+}
+
+model Reimbursement {
+  id            String                @id @default(uuid())
+  employeeId    String
+  employee      Employee              @relation("EmployeeReimbursements", fields: [employeeId], references: [id], onDelete: Cascade)
+  title         String
+  category      ReimbursementCategory
+  expenseDate   DateTime              @db.Date
+  amount        Float
+  description   String
+  receiptUrls   Json                  @default("[]") // Array of Cloudflare R2 file URLs
+  status        ReimbursementStatus   @default(PENDING)
+  approvedById  String?
+  approvedBy    Employee?             @relation("ApprovedReimbursements", fields: [approvedById], references: [id], onDelete: SetNull)
+  paidAt        DateTime?
+  remarks       String?
+  createdAt     DateTime              @default(now())
+  updatedAt     DateTime              @updatedAt
+
+  @@index([employeeId])
+  @@index([status])
+  @@index([expenseDate])
+  @@map("reimbursements")
+}
+
+model Resignation {
+  id                     String            @id @default(uuid())
+  employeeId             String            @unique
+  employee               Employee          @relation("EmployeeResignation", fields: [employeeId], references: [id], onDelete: Cascade)
+  resignationDate        DateTime          @db.Date
+  proposedLastWorkingDay DateTime          @db.Date
+  actualLastWorkingDay   DateTime?         @db.Date
+  reason                 String
+  comments               String?
+  status                 ResignationStatus @default(PENDING)
+  reviewerId             String?
+  reviewer               Employee?         @relation("ReviewedResignations", fields: [reviewerId], references: [id], onDelete: SetNull)
+  reviewerRemarks        String?
+  reviewedAt             DateTime?
+  createdAt              DateTime          @default(now())
+  updatedAt              DateTime          @updatedAt
+
+  @@index([status])
+  @@map("resignations")
+}
+
+model EmployeeChecklist {
+  id              String          @id @default(uuid())
+  employeeId      String
+  employee        Employee        @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  type            LifecycleType
+  title           String
+  progressPercent Float           @default(0)
+  isCompleted     Boolean         @default(false)
+  tasks           ChecklistItem[]
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
+
+  @@index([employeeId])
+  @@index([type])
+  @@map("employee_checklists")
+}
+
+model ChecklistItem {
+  id          String            @id @default(uuid())
+  checklistId String
+  checklist   EmployeeChecklist @relation(fields: [checklistId], references: [id], onDelete: Cascade)
+  title       String
+  category    String            @default("GENERAL") // e.g. "KYC", "IT_SETUP", "POLICY", "ASSET_RETURN"
+  isCompleted Boolean           @default(false)
+  completedAt DateTime?
+  dueDate     DateTime?
+  assigneeId  String?
+  assignee    Employee?         @relation(fields: [assigneeId], references: [id], onDelete: SetNull)
+  notes       String?
+  createdAt   DateTime          @default(now())
+  updatedAt   DateTime          @updatedAt
+
+  @@index([checklistId])
+  @@map("checklist_items")
+}
+
+model PerformanceAppraisal {
+  id             String          @id @default(uuid())
+  employeeId     String
+  employee       Employee        @relation("EmployeeAppraisals", fields: [employeeId], references: [id], onDelete: Cascade)
+  appraisalCycle String          // e.g. "Q4 2026", "Annual 2026"
+  dueDate        DateTime        @db.Date
+  selfReview     String?
+  managerRating  Float?          // 1.0 to 5.0
+  managerReview  String?
+  managerId      String?
+  manager        Employee?       @relation("ManagerAppraisals", fields: [managerId], references: [id], onDelete: SetNull)
+  hrRemarks      String?
+  status         AppraisalStatus @default(UPCOMING)
+  completedAt    DateTime?
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
+
+  @@index([employeeId])
+  @@index([status])
+  @@index([dueDate])
+  @@map("performance_appraisals")
+}
+
+model PayrollRecord {
+  id                  String               @id @default(uuid())
+  employeeId          String
+  employee            Employee             @relation("EmployeePayrolls", fields: [employeeId], references: [id], onDelete: Cascade)
+  month               Int                  // 1 - 12
+  year                Int                  // e.g. 2026
+  baseSalary          Float
+  deductions          Float                @default(0)
+  reimbursementsAdded Float                @default(0)
+  netPayable          Float
+  paymentStatus       PayrollPaymentStatus @default(PENDING)
+  paidAt              DateTime?
+  payslipUrl          String?
+  remarks             String?
+  createdAt           DateTime             @default(now())
+  updatedAt           DateTime             @updatedAt
+
+  @@unique([employeeId, month, year])
+  @@index([employeeId])
+  @@index([paymentStatus])
+  @@index([month, year])
+  @@map("payroll_records")
+}
+
+model HrmsHelpdesk {
+  id               String            @id @default(uuid())
+  ticketNumber     String            @unique
+  employeeId       String
+  employee         Employee          @relation("EmployeeHelpdeskTickets", fields: [employeeId], references: [id], onDelete: Cascade)
+  targetDepartment String            // HR, IT, Account, Admin, Legal, Operation, etc.
+  subject          String
+  category         HelpdeskCategory  @default(HR_INQUIRY)
+  priority         TicketPriority    @default(MEDIUM)
+  description      String
+  attachments      Json              @default("[]") // R2 URLs
+  status           HelpdeskStatus    @default(OPEN)
+  assignedToId     String?
+  assignedTo       Employee?         @relation("AssignedHelpdeskTickets", fields: [assignedToId], references: [id], onDelete: SetNull)
+  resolvedAt       DateTime?
+  comments         HelpdeskComment[]
+  createdAt        DateTime          @default(now())
+  updatedAt        DateTime          @updatedAt
+
+  @@index([employeeId])
+  @@index([targetDepartment])
+  @@index([status])
+  @@map("hrms_helpdesk_tickets")
+}
+
+model HelpdeskComment {
+  id          String       @id @default(uuid())
+  ticketId    String
+  ticket      HrmsHelpdesk @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  authorId    String
+  author      Employee     @relation(fields: [authorId], references: [id], onDelete: Cascade)
+  message     String
+  attachments Json         @default("[]")
+  createdAt   DateTime     @default(now())
+
+  @@index([ticketId])
+  @@map("helpdesk_comments")
+}
+
+model HrmsSurvey {
+  id               String               @id @default(uuid())
+  title            String
+  description      String?
+  questions        Json                 @default("[]")
+  targetDepartment String               @default("ALL")
+  startDate        DateTime             @db.Date
+  endDate          DateTime             @db.Date
+  isActive         Boolean              @default(true)
+  createdById      String?
+  createdBy        Employee?            @relation(fields: [createdById], references: [id], onDelete: SetNull)
+  responses        HrmsSurveyResponse[]
+  createdAt        DateTime             @default(now())
+  updatedAt        DateTime             @updatedAt
+
+  @@index([isActive])
+  @@map("hrms_surveys")
+}
+
+model HrmsSurveyResponse {
+  id          String     @id @default(uuid())
+  surveyId    String
+  survey      HrmsSurvey @relation(fields: [surveyId], references: [id], onDelete: Cascade)
+  employeeId  String
+  employee    Employee   @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  answers     Json       @default("{}")
+  submittedAt DateTime   @default(now())
+
+  @@unique([surveyId, employeeId])
+  @@index([surveyId])
+  @@index([employeeId])
+  @@map("hrms_survey_responses")
 }
 
 model CalendarEvent {

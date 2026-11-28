@@ -14,6 +14,7 @@ export const metadata = {
 export default async function HRMSDirectoryPage() {
   const user = await getCurrentUser();
   const canCreate = canCreateEmployee(user);
+  const isSuperAdmin = user?.systemRole === "SUPER_ADMIN";
 
   const res = await getEmployeesAction({ page: 1, pageSize: 20 });
   const employees = res.success && res.data ? res.data.employees : [];
@@ -27,9 +28,7 @@ export default async function HRMSDirectoryPage() {
           <h1 className="font-editorial text-2xl sm:text-3xl text-slate-900 font-bold tracking-tight">
             Workforce Directory
           </h1>
-          <span className="font-mono text-xs font-semibold px-2.5 py-0.5 rounded-full bg-[#EBF3F6] text-[#588594] border border-[#ACCAD5]/50">
-            {totalCount} Staff Records
-          </span>
+
         </div>
         <p className="text-xs text-slate-500 mt-1 max-w-2xl">
           Enterprise employee directory, department designations, contact cards, and statutory compliance.
@@ -42,6 +41,7 @@ export default async function HRMSDirectoryPage() {
           initialEmployees={employees as any}
           totalCount={totalCount}
           canCreate={canCreate}
+          isSuperAdmin={isSuperAdmin}
         />
       </Suspense>
     </div>

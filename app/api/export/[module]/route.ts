@@ -495,7 +495,7 @@ export async function POST(
       } else {
         // Fallback: strip sensitive keys
         for (const [k, v] of Object.entries(r)) {
-          if (!["passwordHash", "otp", "otpExpiry", "otpAttempts"].includes(k)) {
+          if (!["passwordHash", "encryptedPassword", "visiblePassword", "otp", "otpExpiry", "otpAttempts"].includes(k)) {
             row[k] = v;
           }
         }

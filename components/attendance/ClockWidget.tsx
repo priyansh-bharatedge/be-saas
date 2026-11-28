@@ -182,12 +182,12 @@ export default function ClockWidget({
       {/* Background ambient subtle brand tint (sky slate #ACCAD5 & sunset amber #F0944D) */}
       <div
         className={`absolute -right-24 -top-24 h-64 w-64 rounded-full blur-3xl pointer-events-none transition-colors duration-700 ${currentStatus === "ACTIVE"
-            ? "bg-[#ACCAD5]/25"
-            : currentStatus === "MEETING_MODE"
-              ? "bg-emerald-500/20"
-              : currentStatus === "IDLE"
-                ? "bg-[#F0944D]/20"
-                : "bg-[#ACCAD5]/15"
+          ? "bg-[#ACCAD5]/25"
+          : currentStatus === "MEETING_MODE"
+            ? "bg-emerald-500/20"
+            : currentStatus === "IDLE"
+              ? "bg-[#F0944D]/20"
+              : "bg-[#ACCAD5]/15"
           }`}
       />
 
@@ -199,13 +199,13 @@ export default function ClockWidget({
           </div>
           <div>
             <div className="flex items-center gap-2">
-              <h3 className="text-sm font-semibold text-slate-900">
+              <h1 className="text-lg font-bold text-slate-900">
                 Time & Attendance Tracker
-              </h3>
+              </h1>
 
             </div>
-            <p className="text-xs text-slate-500 mt-0.5">
-              {data?.employeeName || "Staff Member"} • {data?.department || "HRMS"}
+            <p className="text-md font-bold text-slate-500 mt-0.5">
+              {data?.employeeName || "Staff Member"}
             </p>
           </div>
         </div>
@@ -441,13 +441,9 @@ export default function ClockWidget({
       {/* Activity listener status & Shift Session Link */}
       <div className="flex items-center justify-between text-[11px] text-slate-400 pt-2 border-t border-slate-100">
         <div className="flex items-center gap-1.5">
-          <span className="h-1.5 w-1.5 rounded-full bg-[#588594] animate-pulse" />
-          <span className="text-slate-500">Activity listener active (mouse, keys, scroll)</span>
         </div>
         <div className="flex items-center gap-2">
-          <span className="text-slate-400">
-            Idle pause threshold: <strong className="text-slate-600">5:00</strong>
-          </span>
+
           <button
             onClick={() => setShowSessionLog(!showSessionLog)}
             className="text-[#588594] hover:underline flex items-center gap-1 font-medium cursor-pointer"
@@ -488,10 +484,10 @@ export default function ClockWidget({
                     <div className="flex items-center gap-2">
                       <span
                         className={`h-2 w-2 rounded-full ${sess.status === "ACTIVE"
-                            ? "bg-[#588594]"
-                            : sess.status === "MEETING_MODE"
-                              ? "bg-emerald-500"
-                              : "bg-[#F0944D]"
+                          ? "bg-[#588594]"
+                          : sess.status === "MEETING_MODE"
+                            ? "bg-emerald-500"
+                            : "bg-[#F0944D]"
                           }`}
                       />
                       <span className="font-semibold text-slate-800">

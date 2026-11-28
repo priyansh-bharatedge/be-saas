@@ -74,6 +74,25 @@ export async function middleware(request: NextRequest) {
     pathname.startsWith("/verify-otp") ||
     pathname.startsWith("/forgot-password");
 
+  // First-time password setup gating:
+  // If authenticated but isPasswordSet is false, force /set-password
+  if (isAuthenticated && token?.isPasswordSet === false) {
+    if (pathname !== "/set-password") {
+      return NextResponse.redirect(new URL("/set-password", request.url));
+    }
+    return NextResponse.next();
+  }
+
+  // If already set password and visits /set-password, redirect to portal
+  if (isAuthenticated && pathname === "/set-password" && token?.isPasswordSet !== false) {
+    return NextResponse.redirect(new URL("/portal", request.url));
+  }
+
+  // If not authenticated and tries to visit /set-password, redirect to login
+  if (!isAuthenticated && pathname === "/set-password") {
+    return NextResponse.redirect(new URL("/login", request.url));
+  }
+
   // If visiting / and user is logged in, redirect to portal; if not, go to login
   if (pathname === "/") {
     if (isAuthenticated) {

@@ -4,9 +4,24 @@ import { revalidatePath } from "next/cache";
 import { db } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth/session";
 import { getScopeFilter } from "@/lib/auth/rbac";
-import { LeaveType, ApprovalStatus, Role, SystemRole, NotificationType } from "@prisma/client";
-import { applyLeaveSchema, ApplyLeaveInput, ReviewLeaveInput } from "@/lib/validations/leave";
+import {
+  LeaveType,
+  ApprovalStatus,
+  Role,
+  SystemRole,
+  NotificationType,
+  HrmsWorkflowModule,
+  WorkflowTriggerAction,
+} from "@prisma/client";
+import {
+  applyLeaveSchema,
+  ApplyLeaveInput,
+  ReviewLeaveInput,
+  adjustLeaveBalanceSchema,
+  AdjustLeaveBalanceInput,
+} from "@/lib/validations/leave";
 import { createNotification, notifyHRAdmins } from "@/lib/actions/notifications";
+import { evaluateHrmsWorkflow } from "@/lib/hrms/workflow-engine";
 
 export interface ActionResult<T = unknown> {
   success: boolean;
@@ -63,7 +78,8 @@ async function resolveCurrentEmployee() {
 }
 
 /**
- * Fetches the logged-in employee's leave balances and personal requests
+ * Fetches the logged-in employee's leave balances and personal requests.
+ * Strictly 2 Categories: Paid Leave (12 annual quota, 1 day/mo accrual) and Short Leave (max 2/mo, max 3.0h/mo, max 1.5h/req).
  */
 export async function getMyLeaveDataAction(): Promise<
   ActionResult<{
@@ -74,12 +90,29 @@ export async function getMyLeaveDataAction(): Promise<
       remainingDays: number;
       year: number;
     }[];
+    paidLeaveAccrual: {
+      totalQuota: number;
+      accruedDays: number;
+      usedDays: number;
+      remainingDays: number;
+    };
+    shortLeaveMonthly: {
+      maxMonthlyCount: number;
+      usedCount: number;
+      remainingCount: number;
+      maxMonthlyHours: number;
+      usedHours: number;
+      remainingHours: number;
+    };
     requests: {
       id: string;
       leaveType: LeaveType;
       startDate: string;
       endDate: string;
       totalDays: number;
+      startTime: string | null;
+      endTime: string | null;
+      durationHours: number | null;
       reason: string;
       tlStatus: ApprovalStatus;
       tlComments: string | null;
@@ -109,37 +142,52 @@ export async function getMyLeaveDataAction(): Promise<
     }
 
     const currentYear = new Date().getFullYear();
+    const now = new Date();
 
-    // Ensure balances exist for current year, if not initialize them
+    // Ensure strictly PAID_LEAVE and SHORT_LEAVE exist for current year
     let rawBalances = await db.leaveBalance.findMany({
       where: { employeeId: employee.id, year: currentYear },
     });
 
-    if (rawBalances.length === 0) {
-      const defaultTypes = [
-        { leaveType: LeaveType.CASUAL, allocatedDays: 12 },
-        { leaveType: LeaveType.SICK, allocatedDays: 10 },
-        { leaveType: LeaveType.EARNED, allocatedDays: 15 },
-      ];
+    const hasPaid = rawBalances.some((b) => b.leaveType === LeaveType.PAID_LEAVE);
+    const hasShort = rawBalances.some((b) => b.leaveType === LeaveType.SHORT_LEAVE);
 
-      for (const def of defaultTypes) {
-        await db.leaveBalance.create({
-          data: {
-            employeeId: employee.id,
-            leaveType: def.leaveType,
-            year: currentYear,
-            allocatedDays: def.allocatedDays,
-            usedDays: 0,
-            remainingDays: def.allocatedDays,
-          },
-        });
-      }
-
-      rawBalances = await db.leaveBalance.findMany({
-        where: { employeeId: employee.id, year: currentYear },
+    if (!hasPaid) {
+      await db.leaveBalance.create({
+        data: {
+          employeeId: employee.id,
+          leaveType: LeaveType.PAID_LEAVE,
+          year: currentYear,
+          allocatedDays: 12,
+          usedDays: 0,
+          remainingDays: 12,
+          accruedDays: Math.min(12, now.getMonth() + 1),
+        },
       });
     }
 
+    if (!hasShort) {
+      await db.leaveBalance.create({
+        data: {
+          employeeId: employee.id,
+          leaveType: LeaveType.SHORT_LEAVE,
+          year: currentYear,
+          allocatedDays: 0,
+          usedDays: 0,
+          remainingDays: 0,
+        },
+      });
+    }
+
+    rawBalances = await db.leaveBalance.findMany({
+      where: {
+        employeeId: employee.id,
+        year: currentYear,
+        leaveType: { in: [LeaveType.PAID_LEAVE, LeaveType.SHORT_LEAVE] },
+      },
+    });
+
+    // Fetch personal requests
     const rawRequests = await db.leaveRequest.findMany({
       where: { employeeId: employee.id },
       orderBy: { createdAt: "desc" },
@@ -148,6 +196,33 @@ export async function getMyLeaveDataAction(): Promise<
         hrAdmin: { select: { firstName: true, lastName: true } },
       },
     });
+
+    // Dynamic Short Leave calculation for current calendar month
+    const startOfMonth = new Date(Date.UTC(now.getFullYear(), now.getMonth(), 1));
+    const endOfMonth = new Date(Date.UTC(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59));
+
+    const currentMonthShortLeaves = await db.leaveRequest.findMany({
+      where: {
+        employeeId: employee.id,
+        leaveType: LeaveType.SHORT_LEAVE,
+        startDate: { gte: startOfMonth, lte: endOfMonth },
+        finalStatus: { not: ApprovalStatus.REJECTED },
+      },
+    });
+
+    const usedShortCount = currentMonthShortLeaves.length;
+    const usedShortHours = parseFloat(
+      currentMonthShortLeaves.reduce((sum, r) => sum + (r.durationHours || 0), 0).toFixed(1)
+    );
+    const remainingShortCount = Math.max(0, 2 - usedShortCount);
+    const remainingShortHours = Math.max(0, parseFloat((3.0 - usedShortHours).toFixed(1)));
+
+    // Paid Leave dynamic monthly accrual: 1 day per month up to 12
+    const accruedPaidDays = Math.min(12, Math.max(1, now.getMonth() + 1));
+    const paidRecord = rawBalances.find((b) => b.leaveType === LeaveType.PAID_LEAVE);
+    const paidUsed = paidRecord ? paidRecord.usedDays : 0;
+    const paidAllocated = paidRecord ? paidRecord.allocatedDays : 12;
+    const paidRemaining = paidRecord ? paidRecord.remainingDays : 12;
 
     const balances = rawBalances.map((b) => ({
       leaveType: b.leaveType,
@@ -163,6 +238,9 @@ export async function getMyLeaveDataAction(): Promise<
       startDate: r.startDate.toISOString().split("T")[0],
       endDate: r.endDate.toISOString().split("T")[0],
       totalDays: r.totalDays,
+      startTime: r.startTime,
+      endTime: r.endTime,
+      durationHours: r.durationHours,
       reason: r.reason,
       tlStatus: r.tlStatus,
       tlComments: r.tlComments,
@@ -184,6 +262,20 @@ export async function getMyLeaveDataAction(): Promise<
       success: true,
       data: {
         balances,
+        paidLeaveAccrual: {
+          totalQuota: paidAllocated,
+          accruedDays: accruedPaidDays,
+          usedDays: paidUsed,
+          remainingDays: paidRemaining,
+        },
+        shortLeaveMonthly: {
+          maxMonthlyCount: 2,
+          usedCount: usedShortCount,
+          remainingCount: remainingShortCount,
+          maxMonthlyHours: 3.0,
+          usedHours: usedShortHours,
+          remainingHours: remainingShortHours,
+        },
         requests,
         employeeInfo: {
           id: employee.id,
@@ -205,7 +297,7 @@ export async function getMyLeaveDataAction(): Promise<
 }
 
 /**
- * Submits a new leave request with Zod validation & balance enforcement
+ * Submits a new leave request (PAID_LEAVE or SHORT_LEAVE) with Zod validation & balance enforcement
  */
 export async function applyLeaveRequestAction(
   formData: ApplyLeaveInput
@@ -219,19 +311,14 @@ export async function applyLeaveRequestAction(
       };
     }
 
-    const { leaveType, startDate: startStr, endDate: endStr, reason } = parseResult.data;
-
-    const startDate = getNormalizedDate(startStr);
-    const endDate = getNormalizedDate(endStr);
-
-    if (endDate < startDate) {
-      return { success: false, error: "End date cannot be prior to start date." };
-    }
-
-    const totalDays = calculateDays(startDate, endDate);
-    if (totalDays <= 0) {
-      return { success: false, error: "Leave duration must be at least 1 day." };
-    }
+    const {
+      leaveType,
+      startDate: startStr,
+      endDate: endStr,
+      startTime,
+      endTime,
+      reason,
+    } = parseResult.data;
 
     const employee = await resolveCurrentEmployee();
     if (!employee) {
@@ -239,70 +326,172 @@ export async function applyLeaveRequestAction(
     }
 
     const currentYear = new Date().getFullYear();
+    const startDate = getNormalizedDate(startStr);
+    const endDate = getNormalizedDate(endStr);
 
-    // Check balance for this category
-    const balance = await db.leaveBalance.findUnique({
-      where: {
-        employeeId_leaveType_year: {
+    let durationHours: number | null = null;
+    let totalDays = 0;
+
+    if (leaveType === "SHORT_LEAVE") {
+      if (!startTime || !endTime) {
+        return { success: false, error: "Start time and end time are required for Short Leave." };
+      }
+
+      const [startH, startM] = startTime.split(":").map(Number);
+      const [endH, endM] = endTime.split(":").map(Number);
+      const durationMinutes = endH * 60 + endM - (startH * 60 + startM);
+
+      if (durationMinutes <= 0) {
+        return { success: false, error: "End time must be after start time." };
+      }
+
+      durationHours = parseFloat((durationMinutes / 60).toFixed(2));
+
+      // Rule 1: Max 1.5 hours per single request
+      if (durationHours > 1.5) {
+        return {
+          success: false,
+          error: `Single Short Leave request cannot exceed 1.5 hours (requested ${durationHours} hrs).`,
+        };
+      }
+
+      // Rule 2 & 3: Monthly quotas (max 2 leaves, max 3.0 hours)
+      const now = new Date(startDate);
+      const startOfMonth = new Date(Date.UTC(now.getFullYear(), now.getMonth(), 1));
+      const endOfMonth = new Date(Date.UTC(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59));
+
+      const monthlyRequests = await db.leaveRequest.findMany({
+        where: {
           employeeId: employee.id,
-          leaveType,
-          year: currentYear,
+          leaveType: LeaveType.SHORT_LEAVE,
+          startDate: { gte: startOfMonth, lte: endOfMonth },
+          finalStatus: { not: ApprovalStatus.REJECTED },
         },
-      },
-    });
+      });
 
-    if (!balance || balance.remainingDays < totalDays) {
-      const remaining = balance ? balance.remainingDays : 0;
-      return {
-        success: false,
-        error: `Insufficient leave balance! You requested ${totalDays} day(s), but only have ${remaining} day(s) remaining for ${leaveType} leave.`,
-      };
+      if (monthlyRequests.length >= 2) {
+        return {
+          success: false,
+          error: "You have already reached the limit of 2 Short Leaves for this calendar month.",
+        };
+      }
+
+      const currentMonthlyHours = monthlyRequests.reduce(
+        (sum, r) => sum + (r.durationHours || 0),
+        0
+      );
+
+      if (currentMonthlyHours + durationHours > 3.0) {
+        const remaining = Math.max(0, 3.0 - currentMonthlyHours);
+        return {
+          success: false,
+          error: `Requesting ${durationHours} hrs would exceed your monthly Short Leave limit of 3.0 hrs (remaining: ${remaining.toFixed(1)} hrs).`,
+        };
+      }
+
+      totalDays = 0; // Short leave tracked by durationHours
+    } else {
+      // Paid Leave
+      totalDays = calculateDays(startDate, endDate);
+      if (totalDays <= 0) {
+        return { success: false, error: "Leave duration must be at least 1 day." };
+      }
+
+      let balance = await db.leaveBalance.findUnique({
+        where: {
+          employeeId_leaveType_year: {
+            employeeId: employee.id,
+            leaveType: LeaveType.PAID_LEAVE,
+            year: currentYear,
+          },
+        },
+      });
+
+      if (!balance) {
+        balance = await db.leaveBalance.create({
+          data: {
+            employeeId: employee.id,
+            leaveType: LeaveType.PAID_LEAVE,
+            year: currentYear,
+            allocatedDays: 12,
+            usedDays: 0,
+            remainingDays: 12,
+          },
+        });
+      }
+
+      if (balance.remainingDays < totalDays) {
+        return {
+          success: false,
+          error: `Insufficient balance! You requested ${totalDays} day(s), but only have ${balance.remainingDays} day(s) remaining for Paid Leave.`,
+        };
+      }
     }
 
-    // Determine assigned Team Leader
     const teamLeaderId = employee.teamLeaderId || null;
-
-    // Determine HR Admin
     const hrAdmin = await db.employee.findFirst({
-      where: { systemRole: SystemRole.HR_ADMIN },
+      where: {
+        OR: [
+          { systemRole: SystemRole.HR_ADMIN },
+          { systemRole: SystemRole.SUPER_ADMIN },
+        ],
+        status: "ACTIVE",
+      },
       select: { id: true },
     });
 
     const request = await db.leaveRequest.create({
       data: {
         employeeId: employee.id,
-        leaveType,
+        leaveType: leaveType as LeaveType,
         startDate,
         endDate,
         totalDays,
-        reason,
+        startTime: startTime || null,
+        endTime: endTime || null,
+        durationHours,
+        reason: reason.trim(),
         teamLeaderId,
         hrAdminId: hrAdmin ? hrAdmin.id : null,
-        tlStatus: teamLeaderId ? ApprovalStatus.PENDING : ApprovalStatus.APPROVED, // If no TL assigned, auto-clears tier 1
+        tlStatus: teamLeaderId ? ApprovalStatus.PENDING : ApprovalStatus.APPROVED,
         hrStatus: ApprovalStatus.PENDING,
         finalStatus: ApprovalStatus.PENDING,
       },
     });
 
-    // Targeted Notification Triggers:
-    // 1. Notify assigned Team Leader
-    if (employee.teamLeaderId) {
-      await createNotification({
-        recipientUserId: employee.teamLeaderId,
-        title: "Leave Application Awaiting Review",
-        message: `${employee.firstName} ${employee.lastName} submitted a ${leaveType} leave request for ${totalDays} day(s). Action required.`,
-        type: NotificationType.ACTION_REQUIRED,
+    // Evaluate Dynamic HRMS Workflow Engine
+    const workflowResult = await evaluateHrmsWorkflow({
+      module: HrmsWorkflowModule.LEAVE,
+      triggerAction: WorkflowTriggerAction.ON_CREATE,
+      recordId: request.id,
+      employeeId: employee.id,
+      department: employee.department,
+      title: `${leaveType === "SHORT_LEAVE" ? "Short Leave" : "Paid Leave"}: ${employee.firstName} ${employee.lastName}`,
+      details:
+        leaveType === "SHORT_LEAVE"
+          ? `${durationHours} hrs on ${startStr} (${startTime} - ${endTime}). Reason: ${reason}`
+          : `${totalDays} day(s) from ${startStr} to ${endStr}. Reason: ${reason}`,
+    });
+
+    // Default notifications if no matching custom workflow was configured
+    if (!workflowResult.hasCustomWorkflow) {
+      if (employee.teamLeaderId) {
+        await createNotification({
+          recipientUserId: employee.teamLeaderId,
+          title: "Leave Application Awaiting Review",
+          message: `${employee.firstName} ${employee.lastName} submitted a ${leaveType.replace("_", " ")} request (${totalDays > 0 ? `${totalDays} days` : `${durationHours} hrs`}). Action required.`,
+          type: NotificationType.ACTION_REQUIRED,
+          actionUrl: "/hrms/leave",
+        });
+      }
+
+      await notifyHRAdmins({
+        title: "New Leave Application",
+        message: `${employee.firstName} ${employee.lastName} requested ${leaveType.replace("_", " ")} (${startStr}).`,
+        type: NotificationType.INFO,
         actionUrl: "/hrms/leave",
       });
     }
-
-    // 2. Notify HR Admins
-    await notifyHRAdmins({
-      title: "New Leave Application",
-      message: `${employee.firstName} ${employee.lastName} requested ${totalDays} day(s) of ${leaveType} leave (${startStr} to ${endStr}).`,
-      type: NotificationType.INFO,
-      actionUrl: "/hrms/leave",
-    });
 
     revalidatePath("/hrms/leave");
     revalidatePath("/hrms");
@@ -340,7 +529,6 @@ export async function reviewLeaveAsTLAction(
 
     if (!request) return { success: false, error: "Leave request not found." };
 
-    // RBAC: Must be the designated TL, Admin, or HR
     const isAuthorized =
       request.teamLeaderId === employee.id ||
       employee.systemRole === SystemRole.SUPER_ADMIN ||
@@ -366,19 +554,16 @@ export async function reviewLeaveAsTLAction(
       },
     });
 
-    // Targeted Notification:
     if (input.status === ApprovalStatus.APPROVED) {
-      // 1. Notify Employee of TL Approval
       await createNotification({
         recipientUserId: request.employeeId,
         recipientEmail: request.employee.workEmail,
         title: "Leave Approved by Team Leader",
-        message: `Your ${request.leaveType} leave request was approved by your Team Leader and forwarded to HR Admin for final approval.`,
+        message: `Your ${request.leaveType.replace("_", " ")} request was approved by your Team Leader and forwarded to HR Admin for final sign-off.`,
         type: NotificationType.SUCCESS,
         actionUrl: "/hrms/leave",
       });
 
-      // 2. Notify HR Admins of pending Tier-2 review
       await notifyHRAdmins({
         title: "Leave Ready for Final Sign-off",
         message: `${request.employee.firstName} ${request.employee.lastName}'s leave request was approved by TL and awaits your final sign-off.`,
@@ -386,12 +571,11 @@ export async function reviewLeaveAsTLAction(
         actionUrl: "/hrms/leave",
       });
     } else {
-      // Notify Employee of Rejection
       await createNotification({
         recipientUserId: request.employeeId,
         recipientEmail: request.employee.workEmail,
         title: "Leave Request Declined by Team Leader",
-        message: `Your ${request.leaveType} leave request was not approved by your Team Leader.${input.comments ? ` Remarks: "${input.comments}"` : ""}`,
+        message: `Your ${request.leaveType.replace("_", " ")} request was declined by your Team Leader.${input.comments ? ` Remarks: "${input.comments}"` : ""}`,
         type: NotificationType.WARNING,
         actionUrl: "/hrms/leave",
       });
@@ -409,7 +593,8 @@ export async function reviewLeaveAsTLAction(
 }
 
 /**
- * Tier 2: HR Admin reviews employee leave request & deducts balance on approval
+ * Tier 2: HR Admin reviews employee leave request & automatically deducts balance on approval
+ * (or restores balance if a previously approved leave is cancelled/rejected).
  */
 export async function reviewLeaveAsHRAction(
   input: ReviewLeaveInput
@@ -418,7 +603,8 @@ export async function reviewLeaveAsHRAction(
     const user = await getCurrentUser();
     if (!user) return { success: false, error: "Unauthorized." };
 
-    if (user.role !== Role.Admin && user.role !== Role.HRMS) {
+    const scope = await getScopeFilter(user, "hrms");
+    if (!scope.isHrAdmin && !scope.isSuperAdmin) {
       return { success: false, error: "Access Denied: Only HR Admins can perform final leave approval." };
     }
 
@@ -447,14 +633,14 @@ export async function reviewLeaveAsHRAction(
         },
       });
 
-      // 2. If approved, deduct days from Employee LeaveBalance!
-      if (isApproved) {
+      // 2. Automatically deduct balance upon approval for PAID_LEAVE
+      if (isApproved && request.leaveType === LeaveType.PAID_LEAVE && request.totalDays > 0) {
         const year = request.startDate.getFullYear();
         const balance = await tx.leaveBalance.findUnique({
           where: {
             employeeId_leaveType_year: {
               employeeId: request.employeeId,
-              leaveType: request.leaveType,
+              leaveType: LeaveType.PAID_LEAVE,
               year,
             },
           },
@@ -472,16 +658,45 @@ export async function reviewLeaveAsHRAction(
             },
           });
         }
+      } else if (
+        !isApproved &&
+        request.finalStatus === ApprovalStatus.APPROVED &&
+        request.leaveType === LeaveType.PAID_LEAVE &&
+        request.totalDays > 0
+      ) {
+        // Automatically restore balance if a previously approved leave is rejected/cancelled
+        const year = request.startDate.getFullYear();
+        const balance = await tx.leaveBalance.findUnique({
+          where: {
+            employeeId_leaveType_year: {
+              employeeId: request.employeeId,
+              leaveType: LeaveType.PAID_LEAVE,
+              year,
+            },
+          },
+        });
+
+        if (balance) {
+          const newUsed = Math.max(0, balance.usedDays - request.totalDays);
+          const newRemaining = Math.min(balance.allocatedDays, balance.remainingDays + request.totalDays);
+
+          await tx.leaveBalance.update({
+            where: { id: balance.id },
+            data: {
+              usedDays: newUsed,
+              remainingDays: newRemaining,
+            },
+          });
+        }
       }
     });
 
-    // Targeted Notification to Employee regarding Final HR Outcome:
     if (isApproved) {
       await createNotification({
         recipientUserId: request.employeeId,
         recipientEmail: request.employee.workEmail,
         title: "Leave Application Fully Approved",
-        message: `Your ${request.leaveType} leave for ${request.totalDays} day(s) was approved by HR Admin. Quota has been deducted.`,
+        message: `Your ${request.leaveType.replace("_", " ")} request was approved by HR Admin.`,
         type: NotificationType.SUCCESS,
         actionUrl: "/hrms/leave",
       });
@@ -490,7 +705,7 @@ export async function reviewLeaveAsHRAction(
         recipientUserId: request.employeeId,
         recipientEmail: request.employee.workEmail,
         title: "Leave Application Declined by HR",
-        message: `Your ${request.leaveType} leave application was declined during final HR review.${input.comments ? ` Remarks: "${input.comments}"` : ""}`,
+        message: `Your ${request.leaveType.replace("_", " ")} application was declined by HR.${input.comments ? ` Remarks: "${input.comments}"` : ""}`,
         type: NotificationType.WARNING,
         actionUrl: "/hrms/leave",
       });
@@ -504,6 +719,230 @@ export async function reviewLeaveAsHRAction(
     return {
       success: false,
       error: error instanceof Error ? error.message : "Failed to record HR final approval.",
+    };
+  }
+}
+
+/**
+ * HR Admin: Dedicated Leave Balance Adjustment Control (with mandatory audit reason)
+ */
+export async function adjustEmployeeLeaveBalanceAction(
+  input: AdjustLeaveBalanceInput
+): Promise<ActionResult<{ success: boolean; logId: string }>> {
+  try {
+    const user = await getCurrentUser();
+    if (!user) return { success: false, error: "Unauthorized." };
+
+    const scope = await getScopeFilter(user, "hrms");
+    if (!scope.isHrAdmin && !scope.isSuperAdmin) {
+      return {
+        success: false,
+        error: "Access Denied: Only HR Admin or Super Admin can adjust leave balances.",
+      };
+    }
+
+    const parseResult = adjustLeaveBalanceSchema.safeParse(input);
+    if (!parseResult.success) {
+      return {
+        success: false,
+        error: parseResult.error.issues[0]?.message || "Validation error",
+      };
+    }
+
+    const {
+      employeeId,
+      leaveType,
+      newAllocatedDays,
+      newRemainingDays,
+      newMonthlyShortLeaves,
+      newMonthlyShortHours,
+      reason,
+    } = parseResult.data;
+
+    const currentYear = new Date().getFullYear();
+
+    const targetEmployee = await db.employee.findUnique({
+      where: { id: employeeId },
+      select: { id: true, firstName: true, lastName: true, workEmail: true },
+    });
+
+    if (!targetEmployee) {
+      return { success: false, error: "Target employee record not found." };
+    }
+
+    const result = await db.$transaction(async (tx) => {
+      let balance = await tx.leaveBalance.findUnique({
+        where: {
+          employeeId_leaveType_year: {
+            employeeId,
+            leaveType: leaveType as LeaveType,
+            year: currentYear,
+          },
+        },
+      });
+
+      if (!balance) {
+        balance = await tx.leaveBalance.create({
+          data: {
+            employeeId,
+            leaveType: leaveType as LeaveType,
+            year: currentYear,
+            allocatedDays: leaveType === "PAID_LEAVE" ? 12 : 0,
+            usedDays: 0,
+            remainingDays: leaveType === "PAID_LEAVE" ? 12 : 0,
+          },
+        });
+      }
+
+      const prevBal =
+        leaveType === "PAID_LEAVE" ? balance.remainingDays : balance.monthlyShortHours;
+      let newBal = prevBal;
+      let diff = 0;
+
+      if (leaveType === "PAID_LEAVE") {
+        const allocated =
+          newAllocatedDays !== undefined ? newAllocatedDays : balance.allocatedDays;
+        const remaining =
+          newRemainingDays !== undefined ? newRemainingDays : balance.remainingDays;
+        const used = Math.max(0, allocated - remaining);
+        newBal = remaining;
+        diff = newBal - prevBal;
+
+        await tx.leaveBalance.update({
+          where: { id: balance.id },
+          data: {
+            allocatedDays: allocated,
+            remainingDays: remaining,
+            usedDays: used,
+            lastAdjustedAt: new Date(),
+            lastAdjustedById: user.id,
+            lastAdjustmentReason: reason,
+          },
+        });
+      } else {
+        const hours =
+          newMonthlyShortHours !== undefined ? newMonthlyShortHours : balance.monthlyShortHours;
+        const leaves =
+          newMonthlyShortLeaves !== undefined ? newMonthlyShortLeaves : balance.monthlyShortLeaves;
+        newBal = hours;
+        diff = newBal - prevBal;
+
+        await tx.leaveBalance.update({
+          where: { id: balance.id },
+          data: {
+            monthlyShortHours: hours,
+            monthlyShortLeaves: leaves,
+            lastAdjustedAt: new Date(),
+            lastAdjustedById: user.id,
+            lastAdjustmentReason: reason,
+          },
+        });
+      }
+
+      // Record Audit Log
+      const log = await tx.leaveAdjustmentLog.create({
+        data: {
+          employeeId,
+          leaveType: leaveType as LeaveType,
+          previousBalance: prevBal,
+          newBalance: newBal,
+          adjustmentAmount: diff,
+          unit: leaveType === "PAID_LEAVE" ? "DAYS" : "HOURS",
+          reason,
+          adjustedById: user.id,
+        },
+      });
+
+      return log;
+    });
+
+    // Notify employee of administrative balance adjustment
+    await createNotification({
+      recipientUserId: employeeId,
+      recipientEmail: targetEmployee.workEmail,
+      title: "Leave Balance Adjusted by HR Admin",
+      message: `Your ${leaveType.replace("_", " ")} balance was adjusted by HR Admin. Reason: "${reason}"`,
+      type: NotificationType.INFO,
+      actionUrl: "/hrms/leave",
+    });
+
+    revalidatePath("/hrms/leave");
+    revalidatePath("/hrms/directory");
+    revalidatePath("/hrms");
+
+    return { success: true, data: { success: true, logId: result.id } };
+  } catch (error) {
+    console.error("Error in adjustEmployeeLeaveBalanceAction:", error);
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : "Failed to adjust leave balance.",
+    };
+  }
+}
+
+/**
+ * Fetches an employee's leave balances & adjustment history for HR Admin (used in Directory & Edit modal)
+ */
+export async function getEmployeeLeaveBalancesAction(employeeId: string): Promise<
+  ActionResult<{
+    paidBalance: { allocated: number; used: number; remaining: number };
+    shortBalance: { monthlyLeaves: number; monthlyHours: number };
+    adjustmentLogs: any[];
+  }>
+> {
+  try {
+    const user = await getCurrentUser();
+    if (!user) return { success: false, error: "Unauthorized." };
+
+    const currentYear = new Date().getFullYear();
+
+    const [balances, logs] = await Promise.all([
+      db.leaveBalance.findMany({
+        where: { employeeId, year: currentYear },
+      }),
+      db.leaveAdjustmentLog.findMany({
+        where: { employeeId },
+        orderBy: { createdAt: "desc" },
+        take: 10,
+        include: {
+          adjustedBy: { select: { firstName: true, lastName: true } },
+        },
+      }),
+    ]);
+
+    const paid = balances.find((b) => b.leaveType === LeaveType.PAID_LEAVE);
+    const short = balances.find((b) => b.leaveType === LeaveType.SHORT_LEAVE);
+
+    return {
+      success: true,
+      data: {
+        paidBalance: {
+          allocated: paid?.allocatedDays ?? 12,
+          used: paid?.usedDays ?? 0,
+          remaining: paid?.remainingDays ?? 12,
+        },
+        shortBalance: {
+          monthlyLeaves: short?.monthlyShortLeaves ?? 0,
+          monthlyHours: short?.monthlyShortHours ?? 0,
+        },
+        adjustmentLogs: logs.map((l) => ({
+          id: l.id,
+          leaveType: l.leaveType,
+          previousBalance: l.previousBalance,
+          newBalance: l.newBalance,
+          adjustmentAmount: l.adjustmentAmount,
+          unit: l.unit,
+          reason: l.reason,
+          adjustedByName: `${l.adjustedBy.firstName} ${l.adjustedBy.lastName}`,
+          createdAt: l.createdAt.toISOString(),
+        })),
+      },
+    };
+  } catch (error) {
+    console.error("Error fetching employee leave balances:", error);
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : "Failed to load employee leave balance.",
     };
   }
 }
@@ -531,7 +970,6 @@ export async function getApprovalsQueueAction(): Promise<
     let tlQueue: any[] = [];
     let hrQueue: any[] = [];
 
-    // TL Queue: Requests where tlStatus == PENDING and teamLeaderId == employee.id (or team members if HOD/TL, or all if admin)
     if (isTL && employee) {
       const tlWhere: any = {
         tlStatus: ApprovalStatus.PENDING,
@@ -566,12 +1004,14 @@ export async function getApprovalsQueueAction(): Promise<
         startDate: r.startDate.toISOString().split("T")[0],
         endDate: r.endDate.toISOString().split("T")[0],
         totalDays: r.totalDays,
+        startTime: r.startTime,
+        endTime: r.endTime,
+        durationHours: r.durationHours,
         reason: r.reason,
         createdAt: r.createdAt.toISOString(),
       }));
     }
 
-    // HR Queue: Requests where tlStatus == APPROVED and hrStatus == PENDING
     if (isHR) {
       const rawHR = await db.leaveRequest.findMany({
         where: {
@@ -598,6 +1038,9 @@ export async function getApprovalsQueueAction(): Promise<
         startDate: r.startDate.toISOString().split("T")[0],
         endDate: r.endDate.toISOString().split("T")[0],
         totalDays: r.totalDays,
+        startTime: r.startTime,
+        endTime: r.endTime,
+        durationHours: r.durationHours,
         reason: r.reason,
         tlComments: r.tlComments,
         teamLeaderName: r.teamLeader ? `${r.teamLeader.firstName} ${r.teamLeader.lastName}` : "Self/Direct",
@@ -626,13 +1069,15 @@ export async function getApprovalsQueueAction(): Promise<
 /**
  * HR Admin: View all company leave requests with filters
  */
-export async function getAllLeaveRequestsAction(params: {
-  department?: string;
-  status?: string;
-  search?: string;
-  page?: number;
-  pageSize?: number;
-} = {}): Promise<
+export async function getAllLeaveRequestsAction(
+  params: {
+    department?: string;
+    status?: string;
+    search?: string;
+    page?: number;
+    pageSize?: number;
+  } = {}
+): Promise<
   ActionResult<{
     requests: any[];
     total: number;
@@ -651,7 +1096,6 @@ export async function getAllLeaveRequestsAction(params: {
 
     const where: any = {};
 
-    // Enforce Hierarchy Scoping
     if (!scope.canViewAll && scope.allowedEmployeeIds) {
       where.employeeId = { in: scope.allowedEmployeeIds };
     }
@@ -705,6 +1149,9 @@ export async function getAllLeaveRequestsAction(params: {
       startDate: r.startDate.toISOString().split("T")[0],
       endDate: r.endDate.toISOString().split("T")[0],
       totalDays: r.totalDays,
+      startTime: r.startTime,
+      endTime: r.endTime,
+      durationHours: r.durationHours,
       reason: r.reason,
       tlStatus: r.tlStatus,
       teamLeaderName: r.teamLeader ? `${r.teamLeader.firstName} ${r.teamLeader.lastName}` : null,
@@ -732,165 +1179,8 @@ export async function getAllLeaveRequestsAction(params: {
 }
 
 /**
- * HR Admin: Adjusts employee leave balance
- */
-export async function adjustLeaveBalanceAction(input: {
-  employeeId: string;
-  leaveType: LeaveType;
-  year?: number;
-  allocatedDays: number;
-}): Promise<ActionResult<{ success: boolean }>> {
-  try {
-    const user = await getCurrentUser();
-    if (!user || (user.role !== Role.Admin && user.role !== Role.HRMS)) {
-      return { success: false, error: "Unauthorized." };
-    }
-
-    const year = input.year || new Date().getFullYear();
-
-    const existing = await db.leaveBalance.findUnique({
-      where: {
-        employeeId_leaveType_year: {
-          employeeId: input.employeeId,
-          leaveType: input.leaveType,
-          year,
-        },
-      },
-    });
-
-    const used = existing ? existing.usedDays : 0;
-    const remaining = Math.max(0, input.allocatedDays - used);
-
-    await db.leaveBalance.upsert({
-      where: {
-        employeeId_leaveType_year: {
-          employeeId: input.employeeId,
-          leaveType: input.leaveType,
-          year,
-        },
-      },
-      update: {
-        allocatedDays: input.allocatedDays,
-        remainingDays: remaining,
-      },
-      create: {
-        employeeId: input.employeeId,
-        leaveType: input.leaveType,
-        year,
-        allocatedDays: input.allocatedDays,
-        usedDays: 0,
-        remainingDays: input.allocatedDays,
-      },
-    });
-
-    revalidatePath("/hrms/leave");
-    return { success: true, data: { success: true } };
-  } catch (error) {
-    console.error("Error adjusting leave balance:", error);
-    return {
-      success: false,
-      error: error instanceof Error ? error.message : "Failed to update leave balance.",
-    };
-  }
-}
-
-/**
- * Employee edits their own PENDING leave request
- */
-export async function updateMyLeaveRequestAction(input: {
-  requestId: string;
-  leaveType: LeaveType;
-  startDate: string;
-  endDate: string;
-  reason: string;
-}): Promise<ActionResult<{ success: boolean }>> {
-  try {
-    const user = await getCurrentUser();
-    if (!user) return { success: false, error: "Unauthorized." };
-
-    const employee = await resolveCurrentEmployee();
-    if (!employee) return { success: false, error: "Employee record not found." };
-
-    const request = await db.leaveRequest.findUnique({
-      where: { id: input.requestId },
-      include: { employee: true, teamLeader: true },
-    });
-
-    if (!request) return { success: false, error: "Leave request not found." };
-
-    // RBAC: Only owner can edit, and only while PENDING
-    if (request.employeeId !== employee.id) {
-      return { success: false, error: "You can only edit your own leave requests." };
-    }
-
-    if (request.finalStatus !== ApprovalStatus.PENDING || request.tlStatus !== ApprovalStatus.PENDING) {
-      return { success: false, error: "Cannot edit this request once review has commenced or completed." };
-    }
-
-    const startDate = getNormalizedDate(input.startDate);
-    const endDate = getNormalizedDate(input.endDate);
-
-    if (endDate < startDate) {
-      return { success: false, error: "End date cannot be prior to start date." };
-    }
-
-    const totalDays = calculateDays(startDate, endDate);
-    const currentYear = startDate.getFullYear();
-
-    // Check balance
-    const balance = await db.leaveBalance.findUnique({
-      where: {
-        employeeId_leaveType_year: {
-          employeeId: employee.id,
-          leaveType: input.leaveType,
-          year: currentYear,
-        },
-      },
-    });
-
-    if (!balance || balance.remainingDays < totalDays) {
-      const remaining = balance ? balance.remainingDays : 0;
-      return {
-        success: false,
-        error: `Insufficient balance! You requested ${totalDays} day(s), but only have ${remaining} day(s) remaining for ${input.leaveType} leave.`,
-      };
-    }
-
-    await db.leaveRequest.update({
-      where: { id: input.requestId },
-      data: {
-        leaveType: input.leaveType,
-        startDate,
-        endDate,
-        totalDays,
-        reason: input.reason.trim(),
-      },
-    });
-
-    // Notify TL of updated submission
-    if (request.teamLeaderId) {
-      await createNotification({
-        recipientUserId: request.teamLeaderId,
-        title: "Leave Request Modified",
-        message: `${employee.firstName} ${employee.lastName} updated their pending ${input.leaveType} leave application (${totalDays} days).`,
-        type: NotificationType.INFO,
-        actionUrl: "/hrms/leave",
-      });
-    }
-
-    revalidatePath("/hrms/leave");
-    return { success: true, data: { success: true } };
-  } catch (error) {
-    console.error("Error updating leave request:", error);
-    return {
-      success: false,
-      error: error instanceof Error ? error.message : "Failed to update leave request.",
-    };
-  }
-}
-
-/**
- * Employee cancels or deletes their own PENDING leave request
+ * Employee cancels their own PENDING or APPROVED leave request
+ * (If approved PAID_LEAVE, restores balance).
  */
 export async function cancelMyLeaveRequestAction(
   requestId: string
@@ -909,31 +1199,46 @@ export async function cancelMyLeaveRequestAction(
 
     if (!request) return { success: false, error: "Leave request not found." };
 
-    // Owner or HR Admin can cancel pending request
     if (!isHR && request.employeeId !== employee?.id) {
       return { success: false, error: "You can only cancel your own leave requests." };
     }
 
-    if (request.finalStatus !== ApprovalStatus.PENDING) {
-      return { success: false, error: "Cannot cancel a request that has already been finalized." };
-    }
+    await db.$transaction(async (tx) => {
+      // If was APPROVED PAID_LEAVE, restore balance
+      if (request.finalStatus === ApprovalStatus.APPROVED && request.leaveType === LeaveType.PAID_LEAVE && request.totalDays > 0) {
+        const year = request.startDate.getFullYear();
+        const balance = await tx.leaveBalance.findUnique({
+          where: {
+            employeeId_leaveType_year: {
+              employeeId: request.employeeId,
+              leaveType: LeaveType.PAID_LEAVE,
+              year,
+            },
+          },
+        });
 
-    await db.leaveRequest.delete({
-      where: { id: requestId },
+        if (balance) {
+          const newUsed = Math.max(0, balance.usedDays - request.totalDays);
+          const newRemaining = Math.min(balance.allocatedDays, balance.remainingDays + request.totalDays);
+
+          await tx.leaveBalance.update({
+            where: { id: balance.id },
+            data: {
+              usedDays: newUsed,
+              remainingDays: newRemaining,
+            },
+          });
+        }
+      }
+
+      await tx.leaveRequest.delete({
+        where: { id: requestId },
+      });
     });
 
-    // Notify Team Leader
-    if (request.teamLeaderId) {
-      await createNotification({
-        recipientUserId: request.teamLeaderId,
-        title: "Leave Request Cancelled",
-        message: `${request.employee.firstName} ${request.employee.lastName} cancelled their pending ${request.leaveType} leave application.`,
-        type: NotificationType.INFO,
-        actionUrl: "/hrms/leave",
-      });
-    }
-
     revalidatePath("/hrms/leave");
+    revalidatePath("/hrms");
+
     return { success: true, data: { success: true } };
   } catch (error) {
     console.error("Error cancelling leave request:", error);
@@ -943,3 +1248,75 @@ export async function cancelMyLeaveRequestAction(
     };
   }
 }
+
+/**
+ * Updates an existing PENDING leave request
+ */
+export async function updateMyLeaveRequestAction(input: {
+  requestId: string;
+  leaveType: LeaveType;
+  startDate: string;
+  endDate: string;
+  startTime?: string | null;
+  endTime?: string | null;
+  reason: string;
+}): Promise<ActionResult<{ success: boolean }>> {
+  try {
+    const user = await getCurrentUser();
+    if (!user) return { success: false, error: "Unauthorized." };
+
+    const employee = await resolveCurrentEmployee();
+    if (!employee) return { success: false, error: "Employee record not found." };
+
+    const request = await db.leaveRequest.findUnique({
+      where: { id: input.requestId },
+    });
+
+    if (!request) return { success: false, error: "Leave request not found." };
+
+    if (request.employeeId !== employee.id) {
+      return { success: false, error: "You can only edit your own leave requests." };
+    }
+
+    if (request.finalStatus !== ApprovalStatus.PENDING) {
+      return { success: false, error: "Only PENDING requests can be edited." };
+    }
+
+    const start = new Date(input.startDate);
+    const end = new Date(input.endDate);
+    const totalDays = Math.ceil(Math.abs(end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24)) + 1;
+
+    let durationHours: number | null = null;
+    if (input.leaveType === LeaveType.SHORT_LEAVE && input.startTime && input.endTime) {
+      const [sh, sm] = input.startTime.split(":").map(Number);
+      const [eh, em] = input.endTime.split(":").map(Number);
+      durationHours = Math.round(((eh * 60 + em) - (sh * 60 + sm)) / 60 * 10) / 10;
+    }
+
+    await db.leaveRequest.update({
+      where: { id: input.requestId },
+      data: {
+        leaveType: input.leaveType,
+        startDate: start,
+        endDate: end,
+        startTime: input.startTime || null,
+        endTime: input.endTime || null,
+        durationHours,
+        totalDays: input.leaveType === LeaveType.SHORT_LEAVE ? 0 : totalDays,
+        reason: input.reason.trim(),
+      },
+    });
+
+    revalidatePath("/hrms/leave");
+    revalidatePath("/hrms");
+
+    return { success: true, data: { success: true } };
+  } catch (error) {
+    console.error("Error updating leave request:", error);
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : "Failed to update leave request.",
+    };
+  }
+}
+

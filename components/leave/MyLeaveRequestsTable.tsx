@@ -11,13 +11,17 @@ import BulkImportWizard from "@/components/shared/BulkImportWizard";
 import BulkExportMenu from "@/components/shared/BulkExportMenu";
 import { cancelMyLeaveRequestAction } from "@/lib/actions/leave";
 import { toast } from "sonner";
+import { cn } from "@/lib/utils";
 
 export interface PersonalLeaveRequest {
   id: string;
-  leaveType: LeaveType;
+  leaveType: string;
   startDate: string;
   endDate: string;
   totalDays: number;
+  startTime?: string | null;
+  endTime?: string | null;
+  durationHours?: number | null;
   reason: string;
   tlStatus: ApprovalStatus;
   tlComments: string | null;
@@ -209,21 +213,47 @@ export default function MyLeaveRequestsTable({ requests }: MyLeaveRequestsTableP
                   </td>
                   {/* Category & Reason */}
                   <td className="py-4 pl-4 pr-3">
-                    <div className="font-semibold text-slate-900">{r.leaveType} Leave</div>
-                    <div className="text-[11px] text-slate-500 max-w-xs truncate mt-0.5">{r.reason}</div>
+                    <div className="flex items-center gap-1.5">
+                      <span
+                        className={cn(
+                          "px-2 py-0.5 rounded-full text-[10px] font-extrabold uppercase tracking-wider border",
+                          r.leaveType === "SHORT_LEAVE"
+                            ? "bg-sky-50 text-sky-700 border-sky-200"
+                            : "bg-orange-50 text-[#C66318] border-orange-200"
+                        )}
+                      >
+                        {r.leaveType === "SHORT_LEAVE" ? "Short Leave" : "Paid Leave"}
+                      </span>
+                    </div>
+                    <div className="text-[11px] text-slate-500 max-w-xs truncate mt-1">{r.reason}</div>
                   </td>
 
                   {/* Date Range */}
                   <td className="py-4 px-3 font-medium text-slate-700">
                     <div>
-                      {r.startDate} <span className="text-slate-400">to</span> {r.endDate}
+                      {r.leaveType === "SHORT_LEAVE" ? (
+                        r.startDate
+                      ) : (
+                        <>
+                          {r.startDate} <span className="text-slate-400">to</span> {r.endDate}
+                        </>
+                      )}
                     </div>
                     <div className="text-[10px] text-slate-400 mt-0.5">Applied: {r.createdAt.split("T")[0]}</div>
                   </td>
 
                   {/* Duration */}
                   <td className="py-4 px-3 font-bold text-slate-900">
-                    {r.totalDays} day{r.totalDays > 1 ? "s" : ""}
+                    {r.leaveType === "SHORT_LEAVE" ? (
+                      <div>
+                        <div>{r.durationHours || 1.5} hrs</div>
+                        <div className="text-[10px] text-slate-400 font-normal">
+                          {r.startTime || "14:00"} - {r.endTime || "15:30"}
+                        </div>
+                      </div>
+                    ) : (
+                      `${r.totalDays} day${r.totalDays > 1 ? "s" : ""}`
+                    )}
                   </td>
 
                   {/* Tier 1: Team Leader */}

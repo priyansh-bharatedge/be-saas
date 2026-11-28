@@ -14,6 +14,13 @@ import {
   Briefcase,
   ShieldCheck,
   Building2,
+  Inbox,
+  Workflow,
+  Receipt,
+  TrendingUp,
+  FileText,
+  Activity,
+  CalendarCheck,
 } from "lucide-react";
 import { AuthUser } from "@/lib/auth/session";
 import NotificationBell from "@/components/notifications/NotificationBell";
@@ -30,6 +37,36 @@ export function Navbar({ user }: NavbarProps) {
   const getBreadcrumbs = () => {
     if (pathname.startsWith("/admin")) {
       return { parent: "Executive Hub", title: "Super Admin Command Center", icon: ShieldCheck };
+    }
+    if (pathname.startsWith("/hrms/inbox")) {
+      return { parent: "HRMS", title: "Admin Action Inbox", icon: Inbox };
+    }
+    if (pathname.startsWith("/hrms/workflows")) {
+      return { parent: "HRMS", title: "Workflow Engine", icon: Workflow };
+    }
+    if (pathname.startsWith("/hrms/reimbursements")) {
+      return { parent: "HRMS", title: "Reimbursements & Claims", icon: Receipt };
+    }
+    if (pathname.startsWith("/hrms/performance")) {
+      return { parent: "HRMS", title: "Performance Appraisals", icon: TrendingUp };
+    }
+    if (pathname.startsWith("/hrms/payroll")) {
+      return { parent: "HRMS", title: "Payroll & Salaries", icon: FileText };
+    }
+    if (pathname.startsWith("/hrms/helpdesk")) {
+      return { parent: "HRMS", title: "Helpdesk Support", icon: MessageSquare };
+    }
+    if (pathname.startsWith("/hrms/surveys")) {
+      return { parent: "HRMS", title: "Employee Surveys", icon: Activity };
+    }
+    if (pathname.startsWith("/hrms/resignations")) {
+      return { parent: "HRMS", title: "Resignations & Exit", icon: Users };
+    }
+    if (pathname.startsWith("/hrms/lifecycle")) {
+      return { parent: "HRMS", title: "Lifecycle Checklists", icon: ShieldCheck };
+    }
+    if (pathname.startsWith("/hrms/leave")) {
+      return { parent: "HRMS", title: "Leave & Off", icon: CalendarCheck };
     }
     if (pathname.startsWith("/hrms/directory/new")) {
       return { parent: "HRMS", title: "New Employee", icon: Users };

@@ -64,7 +64,7 @@ export function ExecutiveDateFilterBar({
   };
 
   return (
-    <div className="sticky top-0 z-20 mb-6 bg-white/85 backdrop-blur-md border border-slate-200/80 rounded-2xl p-3 sm:p-4 shadow-[0_4px_20px_rgba(0,0,0,0.03)] transition-all">
+    <div className="sticky top-0 z-20 mb-6 bg-white/60 backdrop-blur-xl border border-white/90 rounded-2xl p-3 sm:p-4 shadow-[inset_0_1px_1px_rgba(255,255,255,0.9),0_8px_28px_rgba(15,23,42,0.05)] transition-all">
       <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3">
         {/* Left: Active Period Label & Refresh Status */}
         <div className="flex items-center gap-2.5">
@@ -102,8 +102,8 @@ export function ExecutiveDateFilterBar({
                 className={cn(
                   "inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold transition-all duration-150 disabled:opacity-50",
                   isActive
-                    ? "bg-slate-900 text-white shadow-xs"
-                    : "bg-slate-100/80 hover:bg-slate-200/80 text-slate-700 border border-slate-200/60"
+                    ? "bg-[#18181B] text-white shadow-xs"
+                    : "bg-white/50 backdrop-blur-md hover:bg-white/80 text-slate-700 border border-white/80 shadow-xs"
                 )}
               >
                 <Icon className={cn("h-3.5 w-3.5", isActive ? "text-[#F0944D]" : "text-slate-500")} />
@@ -121,7 +121,7 @@ export function ExecutiveDateFilterBar({
               "inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold transition-all duration-150",
               currentRange === "custom" || showCustomRange
                 ? "bg-gradient-to-r from-[#ACCAD5] to-[#F0944D] text-slate-900 font-bold shadow-xs"
-                : "bg-slate-100/80 hover:bg-slate-200/80 text-slate-700 border border-slate-200/60"
+                : "bg-white/50 backdrop-blur-md hover:bg-white/80 text-slate-700 border border-white/80 shadow-xs"
             )}
           >
             <SlidersHorizontal className="h-3.5 w-3.5" />
@@ -140,7 +140,7 @@ export function ExecutiveDateFilterBar({
             onClick={onRefresh}
             disabled={isLoading}
             title="Refresh Live Data"
-            className="p-1.5 rounded-xl bg-slate-100/80 hover:bg-slate-200 text-slate-600 hover:text-slate-900 border border-slate-200/60 transition-all disabled:opacity-50"
+            className="p-1.5 rounded-xl bg-white/50 backdrop-blur-md hover:bg-white/80 text-slate-600 hover:text-slate-900 border border-white/80 shadow-xs transition-all disabled:opacity-50"
           >
             <RotateCw className={cn("h-4 w-4", isLoading ? "animate-spin text-[#F0944D]" : "")} />
           </button>

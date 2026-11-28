@@ -19,6 +19,9 @@ interface QueueItem {
   startDate: string;
   endDate: string;
   totalDays: number;
+  startTime?: string | null;
+  endTime?: string | null;
+  durationHours?: number | null;
   reason: string;
   tlComments?: string | null;
   teamLeaderName?: string | null;
@@ -151,15 +154,31 @@ export default function LeaveApprovalQueue({
                   <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-slate-100 text-slate-600 font-semibold">
                     {item.employeeId}
                   </span>
-                  <span className="text-xs font-semibold text-[#588594] px-2.5 py-0.5 rounded-full bg-[#EBF3F6]">
-                    {item.leaveType} Leave ({item.totalDays} days)
-                  </span>
+                  {item.leaveType === "SHORT_LEAVE" ? (
+                    <span className="text-xs font-semibold text-amber-700 px-2.5 py-0.5 rounded-full bg-amber-50 border border-amber-200">
+                      Short Leave ({item.durationHours || 1.5} hrs)
+                    </span>
+                  ) : (
+                    <span className="text-xs font-semibold text-[#588594] px-2.5 py-0.5 rounded-full bg-[#EBF3F6]">
+                      Paid Leave ({item.totalDays} {item.totalDays === 1 ? "day" : "days"})
+                    </span>
+                  )}
                 </div>
                 <p className="text-xs text-slate-500 font-medium">
                   {item.designation} • {item.department}
                 </p>
                 <div className="text-xs text-slate-700 font-medium pt-1">
-                  <strong>Duration:</strong> {item.startDate} to {item.endDate}
+                  <strong>Duration:</strong>{" "}
+                  {item.leaveType === "SHORT_LEAVE" ? (
+                    <span>
+                      {item.startDate} ({item.startTime || "--"} to {item.endTime || "--"}) •{" "}
+                      <span className="font-semibold text-amber-800">{item.durationHours || 1.5} hrs</span>
+                    </span>
+                  ) : (
+                    <span>
+                      {item.startDate} to {item.endDate} ({item.totalDays} days)
+                    </span>
+                  )}
                 </div>
                 <p className="text-xs text-slate-600 italic bg-slate-50 p-2 rounded-xl border border-slate-150 mt-1 max-w-xl">
                   &quot;{item.reason}&quot;

@@ -377,6 +377,121 @@ export function ChatClient({
     setShowMobileChat(false);
   };
 
+  // Handle closing / deselecting the active conversation (WhatsApp Web behavior)
+  const handleCloseChat = useCallback(() => {
+    setActiveId(null);
+    setMessages([]);
+    setShowMobileChat(false);
+    setInfoDrawerOpen(false);
+    setContactDrawerOpen(false);
+    if (typeof window !== "undefined") {
+      const url = new URL(window.location.href);
+      if (url.searchParams.has("c")) {
+        url.searchParams.delete("c");
+        window.history.replaceState({}, "", url.pathname + (url.search ? url.search : ""));
+      }
+    }
+  }, []);
+
+  // WhatsApp-style Escape key shortcut listener (capture phase: intercepts even when focused on textarea / inputs)
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key !== "Escape") return;
+
+      // Priority 1: If any popup / drawer / modal / picker overlay is open, close that overlay first
+      // 1.1 Fullscreen Photo Lightbox Modal
+      if (lightboxState.isOpen) {
+        e.preventDefault();
+        e.stopPropagation();
+        setLightboxState((prev) => ({ ...prev, isOpen: false }));
+        return;
+      }
+
+      // 1.2 New Group Modal
+      if (groupModalOpen) {
+        e.preventDefault();
+        e.stopPropagation();
+        setGroupModalOpen(false);
+        return;
+      }
+
+      // 1.3 Group Info Drawer
+      if (infoDrawerOpen) {
+        e.preventDefault();
+        e.stopPropagation();
+        setInfoDrawerOpen(false);
+        return;
+      }
+
+      // 1.4 Contact Info Drawer
+      if (contactDrawerOpen) {
+        e.preventDefault();
+        e.stopPropagation();
+        setContactDrawerOpen(false);
+        return;
+      }
+
+      // 1.5 Global Document Preview Modal (if open in DOM)
+      const docPreviewCloseBtn = document.querySelector<HTMLButtonElement>(
+        'button[title="Close (Esc)"]'
+      );
+      if (docPreviewCloseBtn) {
+        e.preventDefault();
+        e.stopPropagation();
+        docPreviewCloseBtn.click();
+        return;
+      }
+
+      // 1.6 Emoji Picker Popover (in MessageComposer or message reaction bubble)
+      const emojiCloseBtn = document.querySelector<HTMLButtonElement>(
+        'button[title="Close emoji picker"], [data-emoji-picker="true"] button'
+      );
+      if (emojiCloseBtn) {
+        e.preventDefault();
+        e.stopPropagation();
+        emojiCloseBtn.click();
+        window.dispatchEvent(new CustomEvent("chat:close-emoji-picker"));
+        return;
+      }
+
+      // 1.7 Staged Attachment Previews in MessageComposer
+      const stagedAttachmentCloseBtn = document.querySelector<HTMLButtonElement>(
+        'button[title="Remove this attachment"], [data-staged-attachments="true"]'
+      );
+      if (stagedAttachmentCloseBtn) {
+        e.preventDefault();
+        e.stopPropagation();
+        window.dispatchEvent(new CustomEvent("chat:cancel-attachments"));
+        return;
+      }
+
+      // 1.8 AI Test Trigger Menu in ChatWindow
+      const testMenu = document.querySelector('[data-test-menu="true"]');
+      if (testMenu) {
+        e.preventDefault();
+        e.stopPropagation();
+        window.dispatchEvent(new CustomEvent("chat:close-test-menu"));
+        return;
+      }
+
+      // Priority 2: Active conversation is open -> Call exact same close handler as header X button
+      if (activeIdRef.current) {
+        e.preventDefault();
+        e.stopPropagation();
+        handleCloseChat();
+      }
+    };
+
+    window.addEventListener("keydown", handleKeyDown, true);
+    return () => window.removeEventListener("keydown", handleKeyDown, true);
+  }, [
+    lightboxState.isOpen,
+    groupModalOpen,
+    infoDrawerOpen,
+    contactDrawerOpen,
+    handleCloseChat,
+  ]);
+
   // Handle select conversation
   const handleSelectConversation = (id: string) => {
     setActiveId(id);
@@ -940,6 +1055,7 @@ export function ChatClient({
           onOpenContactInfo={() => handleOpenContactInfo()}
           onOpenLightbox={handleOpenLightbox}
           onBackMobile={() => setShowMobileChat(false)}
+          onCloseChat={handleCloseChat}
           isLoadingMessages={isLoadingMessages}
           onToggleReaction={handleToggleReaction}
           isOversightMode={chatMode === "ALL_ORG_CHATS"}

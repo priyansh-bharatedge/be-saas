@@ -12,10 +12,15 @@ import {
   Edit,
   Trash2,
   UploadCloud,
+  Eye,
+  EyeOff,
+  Copy,
+  Sliders,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { EmployeeDetailDrawer } from "./EmployeeDetailDrawer";
 import EditEmployeeModal from "./EditEmployeeModal";
+import AdjustLeaveBalanceModal from "./AdjustLeaveBalanceModal";
 import ConfirmationModal from "@/components/ui/confirmation-modal";
 import BulkImportWizard from "@/components/shared/BulkImportWizard";
 import BulkExportMenu from "@/components/shared/BulkExportMenu";
@@ -66,6 +71,8 @@ interface EmployeeRecord {
   uanNumber?: string | null;
   esicNumber?: string | null;
   status: EmployeeStatus;
+  isPasswordSet?: boolean;
+  visiblePassword?: string | null;
   teamLeader?: { id: string; firstName: string; lastName: string; employeeId: string } | null;
   reportingManager?: { id: string; firstName: string; lastName: string; employeeId: string } | null;
 }
@@ -74,6 +81,7 @@ interface EmployeeListViewProps {
   initialEmployees: EmployeeRecord[];
   totalCount: number;
   canCreate?: boolean;
+  isSuperAdmin?: boolean;
 }
 
 const DEPARTMENTS = DEPARTMENT_FILTER_TABS;
@@ -99,9 +107,22 @@ export function EmployeeListView({
   initialEmployees,
   totalCount,
   canCreate = false,
+  isSuperAdmin = false,
 }: EmployeeListViewProps) {
   const [employees, setEmployees] = useState<EmployeeRecord[]>(initialEmployees);
+  const [revealedPasswords, setRevealedPasswords] = useState<Record<string, boolean>>({});
   const [search, setSearch] = useState("");
+
+  const togglePasswordVisibility = (id: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    setRevealedPasswords((prev) => ({ ...prev, [id]: !prev[id] }));
+  };
+
+  const handleCopyPassword = (pwd: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    navigator.clipboard.writeText(pwd);
+    toast.success("Password copied to clipboard");
+  };
   const [selectedDept, setSelectedDept] = useState("ALL");
   const [selectedRole, setSelectedRole] = useState("ALL");
   const [selectedStatus, setSelectedStatus] = useState("ALL");
@@ -118,6 +139,7 @@ export function EmployeeListView({
   const router = useRouter();
   const [editingEmployee, setEditingEmployee] = useState<EmployeeRecord | null>(null);
   const [isEditOpen, setIsEditOpen] = useState(false);
+  const [adjustLeaveEmployee, setAdjustLeaveEmployee] = useState<EmployeeRecord | null>(null);
   const [deletingEmployee, setDeletingEmployee] = useState<EmployeeRecord | null>(null);
   const [isDeleteOpen, setIsDeleteOpen] = useState(false);
   const [isDeletePending, setIsDeletePending] = useState(false);
@@ -403,6 +425,11 @@ export function EmployeeListView({
                 <th className="py-3 px-4 font-medium text-slate-600 whitespace-nowrap">
                   Work Email
                 </th>
+                {isSuperAdmin && (
+                  <th className="py-3 px-4 font-medium text-slate-600 whitespace-nowrap">
+                    Login Password
+                  </th>
+                )}
                 <th className="py-3 px-4 font-medium text-slate-600 whitespace-nowrap">
                   Status
                 </th>
@@ -419,7 +446,7 @@ export function EmployeeListView({
             <tbody>
               {paginatedEmployees.length === 0 ? (
                 <tr>
-                  <td colSpan={10} className="text-center py-12 text-slate-400">
+                  <td colSpan={isSuperAdmin ? 11 : 10} className="text-center py-12 text-slate-400">
                     <Users className="h-8 w-8 mx-auto mb-2 opacity-40" />
                     <p className="font-semibold text-slate-600">No employees found</p>
                     <p className="text-[11px] text-slate-400 mt-0.5">Try adjusting your search query or department filter.</p>
@@ -476,6 +503,42 @@ export function EmployeeListView({
                       {emp.workEmail}
                     </td>
 
+                    {/* Login Password (Super Admin Only) */}
+                    {isSuperAdmin && (
+                      <td
+                        className="py-3.5 px-4 border-b border-slate-200/50 whitespace-nowrap"
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        {emp.isPasswordSet && emp.visiblePassword ? (
+                          <div className="flex items-center gap-1.5 font-mono text-xs">
+                            <span className="text-slate-800 font-semibold select-all">
+                              {revealedPasswords[emp.id] ? emp.visiblePassword : "••••••••"}
+                            </span>
+                            <button
+                              type="button"
+                              onClick={(e) => togglePasswordVisibility(emp.id, e)}
+                              className="p-1 rounded text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-colors cursor-pointer"
+                              title={revealedPasswords[emp.id] ? "Hide password" : "Show password"}
+                            >
+                              {revealedPasswords[emp.id] ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
+                            </button>
+                            <button
+                              type="button"
+                              onClick={(e) => handleCopyPassword(emp.visiblePassword!, e)}
+                              className="p-1 rounded text-slate-400 hover:text-[#C66318] hover:bg-orange-50 transition-colors cursor-pointer"
+                              title="Copy password"
+                            >
+                              <Copy className="h-3.5 w-3.5" />
+                            </button>
+                          </div>
+                        ) : (
+                          <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-medium bg-amber-50 text-amber-700 border border-amber-200/70">
+                            Not Set Yet
+                          </span>
+                        )}
+                      </td>
+                    )}
+
                     {/* Status (Soft aesthetic colored typography, no harsh dots) */}
                     <td className="py-3.5 px-4 border-b border-slate-200/50 whitespace-nowrap">
                       <span className={`text-xs ${getStatusTextColor(emp.status)}`}>
@@ -494,6 +557,17 @@ export function EmployeeListView({
                         className="flex items-center justify-end gap-1"
                         onClick={(e) => e.stopPropagation()}
                       >
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setAdjustLeaveEmployee(emp);
+                          }}
+                          className="p-1.5 rounded-lg text-slate-400 hover:text-amber-600 hover:bg-amber-50 transition-colors cursor-pointer"
+                          title="Adjust Leave Balance (HR Admin)"
+                        >
+                          <Sliders className="h-3.5 w-3.5" />
+                        </button>
                         <button
                           type="button"
                           onClick={(e) => handleOpenEdit(e, emp)}
@@ -566,6 +640,7 @@ export function EmployeeListView({
         employee={selectedEmployee}
         isOpen={isDrawerOpen}
         onClose={() => setIsDrawerOpen(false)}
+        isSuperAdmin={isSuperAdmin}
       />
 
       {/* Edit Employee Modal */}
@@ -595,6 +670,14 @@ export function EmployeeListView({
         confirmLabel="Confirm Delete"
         isPending={isDeletePending}
         onConfirm={handleConfirmDelete}
+      />
+
+      {/* Adjust Leave Balance Modal (HR Admin / Super Admin) */}
+      <AdjustLeaveBalanceModal
+        employee={adjustLeaveEmployee}
+        isOpen={!!adjustLeaveEmployee}
+        onClose={() => setAdjustLeaveEmployee(null)}
+        onSuccess={() => router.refresh()}
       />
 
       {/* Bulk Import Directory Wizard */}

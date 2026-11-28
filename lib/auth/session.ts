@@ -14,6 +14,7 @@ export interface AuthUser {
   department?: string;
   teamLeaderId?: string | null;
   reportingManagerId?: string | null;
+  isPasswordSet?: boolean;
 }
 
 /**
@@ -43,6 +44,7 @@ export async function getCurrentUser(): Promise<AuthUser | null> {
         department: employee?.department || session.user.department || undefined,
         teamLeaderId: employee?.teamLeaderId || session.user.teamLeaderId || null,
         reportingManagerId: employee?.reportingManagerId || session.user.reportingManagerId || null,
+        isPasswordSet: employee?.isPasswordSet ?? (session.user as any).isPasswordSet ?? false,
       };
     }
   } catch (err) {

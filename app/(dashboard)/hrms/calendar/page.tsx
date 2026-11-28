@@ -39,9 +39,7 @@ export default async function HRMSCalendarPage() {
               <h1 className="text-2xl font-bold tracking-tight text-slate-900">
                 Company Calendar &amp; Schedule
               </h1>
-              <span className="text-[10px] uppercase font-mono px-2.5 py-0.5 rounded-full bg-[#EBF3F6] text-[#588594] border border-[#ACCAD5]/50 font-semibold">
-                Dynamic Sync
-              </span>
+
             </div>
             <p className="text-xs text-slate-500 mt-1 font-medium">
               Enterprise timeline, holidays, team syncs, and your personal daily attendance logs.

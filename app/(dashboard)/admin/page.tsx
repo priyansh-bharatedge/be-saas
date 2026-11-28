@@ -2,6 +2,7 @@ import { redirect } from "next/navigation";
 import { getCurrentUser } from "@/lib/auth/session";
 import { getSuperAdminDashboardData } from "@/lib/actions/super-admin";
 import { getSuperAdminHierarchyData } from "@/lib/actions/super-admin-hierarchy";
+import { getSuperAdminBentoData } from "@/lib/actions/super-admin-bento";
 import { UnifiedSuperAdminDashboard } from "@/components/admin/UnifiedSuperAdminDashboard";
 import { Role, SystemRole } from "@prisma/client";
 
@@ -50,15 +51,17 @@ export default async function SuperAdminDashboardPage({
   const from = resolvedParams.from;
   const to = resolvedParams.to;
 
-  const [initialData, initialHierarchy] = await Promise.all([
+  const [initialData, initialHierarchy, initialBento] = await Promise.all([
     getSuperAdminDashboardData({ range, from, to }),
     getSuperAdminHierarchyData({ range, from, to }),
+    getSuperAdminBentoData({ range, from, to }),
   ]);
 
   return (
     <UnifiedSuperAdminDashboard
       initialData={initialData}
       initialHierarchy={initialHierarchy}
+      initialBento={initialBento}
       user={user}
     />
   );
