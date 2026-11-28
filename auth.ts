@@ -151,7 +151,7 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
     }),
   ],
   callbacks: {
-    jwt({ token, user, trigger, session }) {
+    async jwt({ token, user, trigger, session }) {
       if (user) {
         token.id = user.id;
         token.role = user.role;
@@ -161,14 +161,46 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
         token.reportingManagerId = user.reportingManagerId;
         token.isPasswordSet = user.isPasswordSet;
       }
-      if (trigger === "update" && session?.isPasswordSet !== undefined) {
-        token.isPasswordSet = session.isPasswordSet;
+      if (trigger === "update") {
+        if (session?.isPasswordSet !== undefined) {
+          token.isPasswordSet = session.isPasswordSet;
+        }
+        // Re-fetch employee record from PostgreSQL to ensure JWT token reflects latest DB state
+        const lookupId = (token.id as string) || (token.sub as string);
+        const lookupEmail = (token.email as string) || user?.email;
+        if (lookupId || lookupEmail) {
+          try {
+            const emp = await db.employee.findFirst({
+              where: lookupId ? { id: lookupId } : { workEmail: lookupEmail },
+              select: {
+                id: true,
+                role: true,
+                systemRole: true,
+                department: true,
+                teamLeaderId: true,
+                reportingManagerId: true,
+                isPasswordSet: true,
+              },
+            });
+            if (emp) {
+              token.id = emp.id;
+              token.role = emp.role;
+              token.systemRole = emp.systemRole;
+              token.department = emp.department;
+              token.teamLeaderId = emp.teamLeaderId;
+              token.reportingManagerId = emp.reportingManagerId;
+              token.isPasswordSet = emp.isPasswordSet;
+            }
+          } catch (err) {
+            console.error("[NextAuth JWT Update Error]:", err);
+          }
+        }
       }
       return token;
     },
     session({ session, token }) {
       if (session.user) {
-        session.user.id = token.id as string;
+        session.user.id = (token.id as string) || (token.sub as string) || "";
         session.user.role = token.role as Role;
         session.user.systemRole = token.systemRole as SystemRole;
         session.user.department = token.department as string;

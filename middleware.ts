@@ -83,14 +83,19 @@ export async function middleware(request: NextRequest) {
     return NextResponse.next();
   }
 
-  // If already set password and visits /set-password, redirect to portal
+  // If already set password and visits /set-password, redirect to respective landing page
   if (isAuthenticated && pathname === "/set-password" && token?.isPasswordSet !== false) {
-    return NextResponse.redirect(new URL("/portal", request.url));
+    const isSuperAdmin = token?.role === Role.Admin || token?.systemRole === "SUPER_ADMIN";
+    return NextResponse.redirect(new URL(isSuperAdmin ? "/admin" : "/portal", request.url));
   }
 
-  // If not authenticated and tries to visit /set-password, redirect to login
+  // If not authenticated and tries to visit /set-password without email param, redirect to login
   if (!isAuthenticated && pathname === "/set-password") {
-    return NextResponse.redirect(new URL("/login", request.url));
+    const hasEmail = request.nextUrl.searchParams.has("email");
+    if (!hasEmail) {
+      return NextResponse.redirect(new URL("/login", request.url));
+    }
+    return NextResponse.next();
   }
 
   // If visiting / and user is logged in, redirect to portal; if not, go to login

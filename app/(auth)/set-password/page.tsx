@@ -1,7 +1,8 @@
 "use client";
 
-import { useState } from "react";
-import { useRouter } from "next/navigation";
+import { useState, useEffect, Suspense } from "react";
+import { useSearchParams } from "next/navigation";
+import { useSession, signIn } from "next-auth/react";
 import { motion } from "framer-motion";
 import {
   ShieldCheck,
@@ -12,25 +13,47 @@ import {
   XCircle,
   Loader2,
   Lock,
+  Mail,
 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 
-export default function SetPasswordPage() {
-  const router = useRouter();
+function SetPasswordForm() {
+  const { data: session, status, update } = useSession();
+  const searchParams = useSearchParams();
+  const emailParam = searchParams.get("email") || "";
+
+  const [email, setEmail] = useState(emailParam || session?.user?.email || "");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirm, setShowConfirm] = useState(false);
   const [loading, setLoading] = useState(false);
 
+  // Sync email when session loads or query parameter changes
+  useEffect(() => {
+    if (session?.user?.email && !email) {
+      setEmail(session.user.email);
+    } else if (emailParam && !email) {
+      setEmail(emailParam);
+    }
+  }, [session?.user?.email, emailParam, email]);
+
+  const effectiveEmail = (email || session?.user?.email || emailParam).trim().toLowerCase();
+
   // Validation rules
   const hasMinLength = password.length >= 8;
   const passwordsMatch = password.length > 0 && password === confirmPassword;
-  const isValid = hasMinLength && passwordsMatch;
+  const isEmailValid = effectiveEmail.length > 0 && effectiveEmail.includes("@");
+  const isValid = hasMinLength && passwordsMatch && isEmailValid;
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+
+    if (!isEmailValid) {
+      toast.error("Please provide a valid enterprise email address.");
+      return;
+    }
 
     if (!hasMinLength) {
       toast.error("Password must be at least 8 characters long.");
@@ -47,19 +70,58 @@ export default function SetPasswordPage() {
       const res = await fetch("/api/auth/set-initial-password", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ password, confirmPassword }),
+        body: JSON.stringify({
+          email: effectiveEmail,
+          password,
+          confirmPassword,
+        }),
       });
 
       const data = await res.json();
-      if (res.ok && data.success) {
-        toast.success("Password configured successfully! Welcome to BharatEdge.");
-        window.location.href = data.redirectTo || "/portal";
-      } else {
-        toast.error(data.error || "Failed to set password. Please try again.");
+      if (!res.ok || !data.success) {
+        toast.error(data.error || "Failed to configure password. Please try again.");
+        setLoading(false);
+        return;
       }
-    } catch {
+
+      // 1. If the user already has an active NextAuth session (e.g., via OTP):
+      // Await update({ isPasswordSet: true }) so the refreshed JWT cookie is written before navigating
+      if (session?.user) {
+        try {
+          await update({ isPasswordSet: true });
+        } catch (updateErr) {
+          console.warn("[NextAuth Session Update Warning, falling back to credentials auth]:", updateErr);
+          await signIn("credentials", {
+            email: effectiveEmail,
+            password,
+            flowType: "password",
+            redirect: false,
+          });
+        }
+      } else {
+        // 2. If the user reached the setup screen without an active NextAuth session yet:
+        // Automatically authenticate them via credentials signIn
+        const signInRes = await signIn("credentials", {
+          email: effectiveEmail,
+          password,
+          flowType: "password",
+          redirect: false,
+        });
+
+        if (signInRes?.error) {
+          toast.error(signInRes.error || "Authentication failed after password setup. Please log in.");
+          window.location.assign("/login");
+          return;
+        }
+      }
+
+      // 3. Display success toast and perform hard navigation to respective post-login landing page
+      toast.success("Password configured successfully! Welcome to BharatEdge.");
+      const targetUrl = data.redirectTo || (data.isSuperAdmin ? "/admin" : "/portal");
+      window.location.assign(targetUrl);
+    } catch (err) {
+      console.error("[Set Password Error]:", err);
       toast.error("Network error. Unable to set password.");
-    } finally {
       setLoading(false);
     }
   };
@@ -97,6 +159,33 @@ export default function SetPasswordPage() {
               Welcome to BharatEdge! To complete your onboarding, configure a password to secure your departmental access.
             </p>
           </div>
+
+          {/* Logged in / User Context Badge */}
+          {effectiveEmail ? (
+            <div className="mb-4 px-3.5 py-2 rounded-xl bg-orange-50/70 border border-orange-200/60 flex items-center gap-2 text-xs text-slate-700">
+              <Mail className="h-3.5 w-3.5 text-[#E86C2C] shrink-0" />
+              <span className="truncate">
+                Configuring credentials for:{" "}
+                <strong className="text-slate-900 font-semibold">{effectiveEmail}</strong>
+              </span>
+            </div>
+          ) : (
+            <div className="mb-4 space-y-1.5">
+              <label className="text-xs font-semibold text-slate-700 block">
+                Enterprise Email Address
+              </label>
+              <div className="relative flex items-center">
+                <input
+                  type="email"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  placeholder="e.g. your.name@bharatedge.com"
+                  required
+                  className="w-full px-3.5 py-2.5 bg-slate-50/70 border border-slate-300 rounded-lg text-xs text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-[#F0944D]/25 focus:border-[#F0944D]"
+                />
+              </div>
+            </div>
+          )}
 
           <form onSubmit={handleSubmit} className="space-y-4">
             {/* New Password */}
@@ -200,5 +289,19 @@ export default function SetPasswordPage() {
         </motion.div>
       </main>
     </div>
+  );
+}
+
+export default function SetPasswordPage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="min-h-screen bg-[#FCFAF7] flex items-center justify-center font-mono text-xs text-slate-500">
+          Loading password configuration...
+        </div>
+      }
+    >
+      <SetPasswordForm />
+    </Suspense>
   );
 }
